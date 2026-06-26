@@ -364,6 +364,7 @@
     <section class="page" id="page-accounts">
       <div class="card" style="margin-bottom:16px">
         <div class="row sp"><h3 style="margin:0"><span class="ht"><span data-ic="bank"></span> Saldo atual das contas</span></h3><span class="num" id="accTotal" style="font-weight:700"></span></div>
+        <p class="help" id="accUpdated" style="margin-top:6px"></p>
         <p class="help" style="margin-top:6px">Digite o saldo que aparece no app do banco (ou suba um print e digite o valor). Esse valor passa a ser o seu <b>Saldo total</b> na tela inicial.</p>
       </div>
       <div id="accountsList"></div>
@@ -710,6 +711,18 @@ function buildMonths(){
 /* ============ CÁLCULOS ============ */
 function computeBalance(id){const a=S.accounts.find(x=>x.id===id);if(!a)return 0;if(a.currentBalance!=null&&a.currentBalance!==''&&!isNaN(+a.currentBalance))return +a.currentBalance;const today=new Date().toISOString().slice(0,10);let b=+a.balance||0;S.transactions.filter(t=>t.account===id&&t.date<=today).forEach(t=>b+=t.amount);return b;}
 function nowStr(){try{return new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+function fmtTs(iso){if(!iso)return '';try{return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
+/* devolve {ts, label} da atualização de saldo mais recente entre as contas */
+function lastBalanceUpdate(){
+  let bestTs=null,legacy='';
+  S.accounts.forEach(a=>{
+    if(a.balTs&&(!bestTs||a.balTs>bestTs))bestTs=a.balTs;
+    if(!legacy&&a.balUpdated)legacy=a.balUpdated;
+  });
+  if(bestTs)return {ts:bestTs,label:fmtTs(bestTs)};
+  if(legacy)return {ts:null,label:legacy};
+  return null;
+}
 function totalBalance(){return S.accounts.filter(a=>scopeAccs().has(a.id)).reduce((s,a)=>s+computeBalance(a.id),0);}
 function monthStats(m){
   const tx=S.transactions.filter(t=>ym(t.date)===m&&inScope(t));
@@ -747,7 +760,7 @@ function renderOverview(){
   const m=curMonth();const st=monthStats(m);const pst=monthStats(prevMonth(m));
   const chg=(a,b)=>b===0?(a>0?100:0):((a-b)/Math.abs(b)*100);
   document.getElementById('kpis').innerHTML=[
-    {l:'Saldo total',v:totalBalance(),ic:'wallet',c:'var(--accent)',chg:null,sub:'saldo real até hoje',click:"showAccountsDetail()"},
+    {l:'Saldo total',v:totalBalance(),ic:'wallet',c:'var(--accent)',chg:null,sub:(function(){const u=lastBalanceUpdate();return u?'atualizado em '+u.label:'saldo real até hoje';})(),click:"showAccountsDetail()"},
     {l:'Entradas do mês',v:st.inc,ic:'income',c:'var(--green)',chg:chg(st.inc,pst.inc),click:"showMonthDetail('inc')"},
     {l:'Despesas do mês',v:st.exp,ic:'expense',c:'var(--red)',chg:chg(st.exp,pst.exp),inv:true,click:"showMonthDetail('exp')"},
     {l:'Saldo do mês',v:st.net,ic:'scale',c:'var(--cyan)',chg:null}
@@ -1115,6 +1128,7 @@ function compRaw(a){const today=new Date().toISOString().slice(0,10);let b=+a.ba
 function renderAccounts(){
   const el=document.getElementById('accountsList');if(!el)return;
   const tEl=document.getElementById('accTotal');if(tEl)tEl.textContent=fmt(totalBalance());
+  const uEl=document.getElementById('accUpdated');if(uEl){const u=lastBalanceUpdate();uEl.textContent=u?'Saldo atualizado pela última vez em '+u.label:'';uEl.style.display=u?'':'none';}
   el.innerHTML=S.accounts.map(a=>{const comp=compRaw(a);const manual=a.currentBalance!=null&&a.currentBalance!=='';
     return `<div class="card" style="margin-bottom:12px">
       <div class="row sp"><div><b style="font-size:15px">${a.name}</b> <span class="tag">${a.bank||a.type}</span></div><button class="ibtn dng" title="Excluir" onclick="delAcc('${a.id}')">${ic('trash',15)}</button></div>
@@ -1123,13 +1137,13 @@ function renderAccounts(){
         <button class="btn ghost" onclick="document.getElementById('prt_${a.id}').click()"><span data-ic2="upload"></span> Print</button>
         <input type="file" id="prt_${a.id}" accept="image/*" capture="environment" style="display:none" onchange="accPrint('${a.id}',event)">
       </div>
-      <div class="help">${manual?`Saldo manual · atualizado ${a.balUpdated||''}`:`Sem saldo manual — usando o calculado por lançamentos: ${fmt(comp)}`}</div>
+      <div class="help">${manual?`Saldo manual · atualizado ${a.balTs?fmtTs(a.balTs):(a.balUpdated||'')}`:`Sem saldo manual — usando o calculado por lançamentos: ${fmt(comp)}`}</div>
       <div id="prtimg_${a.id}"></div>
     </div>`;}).join('')+
     `<button class="btn ghost block" onclick="openAcc()"><span data-ic2="plus"></span> Adicionar conta</button>`;
   injectIcons(el);
 }
-function setCurrentBalance(id,v){const a=S.accounts.find(x=>x.id===id);if(v===''||v==null){delete a.currentBalance;a.balUpdated='';}else{a.currentBalance=+v;a.balUpdated=nowStr();}save();renderAccounts();}
+function setCurrentBalance(id,v){const a=S.accounts.find(x=>x.id===id);if(v===''||v==null){delete a.currentBalance;a.balUpdated='';a.balTs='';}else{a.currentBalance=+v;a.balUpdated=nowStr();a.balTs=new Date().toISOString();}save();renderAccounts();}
 function loadTesseract(){return new Promise((res,rej)=>{if(window.Tesseract)return res();const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=()=>res();s.onerror=()=>rej(new Error('offline'));document.head.appendChild(s);});}
 function extractBalance(text){
   const numRe=/\d{1,3}(?:\.\d{3})*,\d{2}/;
@@ -1148,7 +1162,7 @@ function accPrint(id,e){
       const{data}=await Tesseract.recognize(r.result,'eng',{});
       const val=extractBalance(data.text);
       if(val!=null&&!isNaN(val)){
-        const a=S.accounts.find(x=>x.id===id);a.currentBalance=val;a.balUpdated=nowStr();save();
+        const a=S.accounts.find(x=>x.id===id);a.currentBalance=val;a.balUpdated=nowStr();a.balTs=new Date().toISOString();save();
         const inp=document.getElementById('bal_'+id);if(inp)inp.value=val;
         const tEl=document.getElementById('accTotal');if(tEl)tEl.textContent=fmt(totalBalance());
         if(d)d.innerHTML=`<div class="help" style="margin-top:8px;color:var(--green)">Valor identificado: <b>${fmt(val)}</b> — confira e ajuste se precisar.</div>${img}`;
