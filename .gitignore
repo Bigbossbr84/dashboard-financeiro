@@ -1,0 +1,14 @@
+# Dados financeiros pessoais — NUNCA enviar pro GitHub (repo pode ser público)
+backup-financeiro-*.json
+*.dados.json
+dashboard-financeiro-dados.json
+
+# Chaves / segredos
+.env
+*.key
+config.local.*
+
+# Lixo do sistema
+Thumbs.db
+desktop.ini
+.DS_Store
