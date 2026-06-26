@@ -384,7 +384,7 @@
       <div class="grid g4" id="billKpis" style="margin-bottom:16px"></div>
       <div class="row sp" style="margin-bottom:14px">
         <div class="sub" id="billsSub" style="color:var(--mut)">Contas do mês</div>
-        <button class="btn sm" onclick="openBill()"><span data-ic="plus"></span> Nova conta</button>
+        <div class="row" style="gap:8px"><button class="btn sm ghost" onclick="reconcileBills()" title="Buscar no extrato quais já foram pagas"><span data-ic="check"></span> Conciliar com extrato</button><button class="btn sm" onclick="openBill()"><span data-ic="plus"></span> Nova conta</button></div>
       </div>
       <div class="card pad0"><div id="billsTable"></div></div>
     </section>
@@ -1035,6 +1035,53 @@ function renderBills(){
 }
 function togglePaid(id){const m=curMonth();const b=S.bills.find(x=>x.id===id);b.payments=b.payments||{};if(b.payments[m])delete b.payments[m];else b.payments[m]=true;save();renderBills();}
 function copyBill(id){const b=S.bills.find(x=>x.id===id);const c={...b,id:uid(),name:b.name+' (cópia)',payments:{}};if(!b.recurring)c.month=curMonth();S.bills.push(c);save();renderBills();toast('Conta copiada');}
+
+/* ===== CONCILIAÇÃO: cruza contas a pagar com os lançamentos do extrato ===== */
+const RECO_STOP=new Set(['de','do','da','dos','das','com','por','para','e','o','a','os','as','em','no','na','um','uma','parte','conta','cartao','plano','saude','seguro','pix','pago','paga','mais','anual','servico','ltda','sa','cp','vizinho','debito','automatico','janeiro','fevereiro','marco','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro','material','anderson','keli','logan','kenzo','itau','vivo','agua','carro','mensal','fixa','avulsa']);
+function recoNorm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+function recoTokens(name){return recoNorm(name).split(' ').filter(w=>w.length>=4&&!RECO_STOP.has(w));}
+function recoScore(bill,t){const td=recoNorm(t.description),tv=Math.abs(t.amount),amt=Math.abs(+bill.amount||0);
+  const kw=recoTokens(bill.name).some(w=>td.includes(w.slice(0,5)));
+  const adiff=amt>0?Math.abs(tv-amt)/amt:null;return {t,kw,adiff,tv};}
+/* devolve {forte:[{bill,s}], possivel:[{bill,s}], paid:[bill], semMatch:[bill]} */
+function reconcileScan(m){
+  const list=billsForMonth(m);
+  const pool=S.transactions.filter(t=>t.date.startsWith(m)&&t.amount<0).map((t,i)=>({...t,_i:i}));
+  const used=new Set();
+  // já marca como usados os lançamentos já vinculados a contas pagas
+  list.forEach(b=>{const ref=b.payments&&b.payments[m];if(typeof ref==='string'){const idx=pool.findIndex(t=>t.id===ref);if(idx>=0)used.add(pool[idx]._i);}});
+  const res={forte:[],possivel:[],paid:[],semMatch:[]};
+  const pend=[];
+  list.forEach(b=>{if(isPaid(b,m)){res.paid.push(b);return;}pend.push(b);});
+  // passo 1: matches fortes (palavra-chave + valor ~12%) — consomem o lançamento
+  pend.forEach(b=>{let best=null;pool.forEach(t=>{if(used.has(t._i))return;const s=recoScore(b,t);if(s.kw&&s.adiff!=null&&s.adiff<=0.12&&(!best||s.adiff<best.adiff))best=s;});
+    if(best){used.add(best.t._i);res.forte.push({bill:b,s:best});b._matched=true;}});
+  // passo 2: possíveis (palavra-chave OU valor quase exato) nos lançamentos que sobraram
+  pend.forEach(b=>{if(b._matched){delete b._matched;return;}let best=null;pool.forEach(t=>{if(used.has(t._i))return;const s=recoScore(b,t);const ok=s.kw||(s.adiff!=null&&s.adiff<=0.012);if(ok&&(!best||(s.adiff==null?1:s.adiff)<(best.adiff==null?1:best.adiff)))best=s;});
+    if(best){used.add(best.t._i);res.possivel.push({bill:b,s:best});}else res.semMatch.push(b);});
+  return res;
+}
+function reconcileBills(){
+  const m=curMonth();const r=reconcileScan(m);
+  if(!r.forte.length&&!r.possivel.length){toast('Nada novo encontrado no extrato de '+monthName(m));return;}
+  const row=(o,checked)=>{const dt=o.s.t.date.split('-').reverse().slice(0,2).join('/');
+    return `<label class="reco-row" style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" data-bill="${o.bill.id}" data-tx="${o.s.t.id||''}" ${checked?'checked':''} style="width:auto;flex-shrink:0">
+      <span style="flex:1;min-width:0"><b>${o.bill.name}</b><div class="mut" style="font-size:11px">${dt} · ${o.s.t.description.slice(0,46)}</div></span>
+      <b class="num" style="white-space:nowrap">${fmt(-o.s.tv)}</b></label>`;};
+  mod.innerHTML=`<h2>Conciliar com o extrato — ${monthName(m)}</h2>
+    <p class="help" style="margin-bottom:12px">Achei estes pagamentos no seu extrato. Confira e desmarque o que não bater. As <b>fortes</b> já vêm marcadas; as <b>possíveis</b> (valor próximo, sem certeza) ficam pra você decidir.</p>
+    ${r.forte.length?`<div style="font-size:12px;font-weight:700;color:var(--green);margin:4px 0 2px">Pagamentos encontrados (${r.forte.length})</div>`+r.forte.map(o=>row(o,true)).join(''):''}
+    ${r.possivel.length?`<div style="font-size:12px;font-weight:700;color:var(--amber);margin:14px 0 2px">Possíveis — confira (${r.possivel.length})</div>`+r.possivel.map(o=>row(o,false)).join(''):''}
+    ${r.semMatch.length?`<p class="help" style="margin-top:12px">Sem pagamento no extrato: ${r.semMatch.map(b=>b.name).join(', ')}.</p>`:''}
+    <div class="row sp" style="margin-top:16px"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn" onclick="applyReconcile()"><span data-ic2="check"></span> Marcar selecionadas como pagas</button></div>`;
+  injectIcons(mod);mb.classList.add('open');
+}
+function applyReconcile(){
+  const m=curMonth();let n=0;
+  mod.querySelectorAll('input[type=checkbox][data-bill]').forEach(c=>{if(!c.checked)return;const b=S.bills.find(x=>x.id===c.dataset.bill);if(!b)return;b.payments=b.payments||{};b.payments[m]=c.dataset.tx||true;n++;});
+  save();closeModal();renderBills();toast(n?n+' conta(s) marcada(s) como paga(s)':'Nenhuma selecionada');
+}
 
 /* ============ PROJECTION ============ */
 let scenario='real';
