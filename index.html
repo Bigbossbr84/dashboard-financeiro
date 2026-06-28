@@ -292,6 +292,10 @@
         <h3><span class="ht"><span data-ic="chart"></span> Gastos por categoria</span> <span class="tag" id="spendTotal">R$ 0,00</span></h3>
         <div id="cbars" class="cbars"></div>
       </div>
+      <div class="card" style="margin-top:16px">
+        <h3><span class="ht"><span data-ic="pie"></span> Distribuição (pizza)</span></h3>
+        <div id="spendPie"></div>
+      </div>
       <div class="card pad0" style="margin-top:16px">
         <div class="row sp" style="padding:16px 18px 6px"><span style="font-weight:700">Detalhe por categoria <span class="help" style="font-weight:400">(toque para reclassificar)</span></span><button class="btn sm ghost" onclick="autoClassifyAll()">Auto-classificar "Outros"</button></div>
         <div id="catList" style="padding:0 18px 10px"></div>
@@ -614,7 +618,10 @@ function load(){
     d.bills.forEach(b=>{b.payments=b.payments||{};if(b.status==='pago'&&!Object.keys(b.payments).length)b.payments[nowM]=true;delete b.status;if(!b.recurring&&!b.month)b.month=nowM;});
     return d;
   }
-  return {accounts:[{id:uid(),name:'Conta Principal',bank:'',type:'corrente',balance:0}],
+  return {accounts:[
+      {id:uid(),name:'Conta Principal',bank:'Itaú',type:'corrente',balance:0},
+      {id:uid(),name:'Banco Inter',bank:'Inter PJ',type:'corrente',balance:0},
+      {id:uid(),name:'Banco do Brasil',bank:'BB',type:'corrente',balance:0}],
     transactions:[],cards:[],bills:[],budgets:{},income:0,categories:clone(DEF_CATS),rules:clone(DEF_RULES)};
 }
 var driveState={token:null,auto:false,fileId:null};
@@ -848,6 +855,7 @@ function renderSpending(){
   const m=curMonth();const by=catSpend(m);const entries=Object.entries(by).sort((a,b)=>b[1]-a[1]);
   const total=entries.reduce((s,e)=>s+e[1],0);
   document.getElementById('spendTotal').textContent=fmt(total);
+  renderSpendPie(entries,total);
   // bar chart
   const cb=document.getElementById('cbars');
   if(!entries.length){cb.innerHTML=`<div class="empty" style="width:100%"><div class="big">${ic('chart',38)}</div>Sem gastos neste mês.</div>`;}
@@ -872,6 +880,18 @@ function renderSpending(){
       <div class="cmain"><div class="cname">${c}</div><div class="csub">${cnt} lançamento${cnt!==1?'s':''} · ${pct}%</div></div>
       <div class="cval">${fmt(v)}</div><span class="chev">${ic('chev',16)}</span></div>${sub}`;
   }).join('');
+}
+function renderSpendPie(entries,total){
+  const el=document.getElementById('spendPie');if(!el)return;
+  if(!total){el.innerHTML=`<div class="empty"><div class="big">${ic('pie',38)}</div>Sem gastos neste mês.</div>`;return;}
+  const cx=90,cy=90,r=84;let acc=0,segs='';
+  entries.forEach(e=>{const f=e[1]/total;const col=catColor(e[0]);
+    const a0=acc*2*Math.PI-Math.PI/2,a1=(acc+f)*2*Math.PI-Math.PI/2;acc+=f;
+    const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);const lg=f>.5?1:0;
+    if(f>=0.999){segs+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${col}"><title>${e[0]}: ${fmt(e[1])} (100%)</title></circle>`;}
+    else segs+=`<path d="M${cx} ${cy} L${x0} ${y0} A${r} ${r} 0 ${lg} 1 ${x1} ${y1} Z" fill="${col}" stroke="var(--card)" stroke-width="1.5"><title>${e[0]}: ${fmt(e[1])} (${(f*100).toFixed(0)}%)</title></path>`;});
+  const leg=entries.map(e=>`<span><span class="sw" style="background:${catColor(e[0])}"></span>${e[0]} <b style="color:var(--txt);margin-left:3px">${(e[1]/total*100).toFixed(0)}%</b></span>`).join('');
+  el.innerHTML=`<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;justify-content:center"><svg viewBox="0 0 180 180" width="190" style="flex-shrink:0">${segs}</svg><div class="legend" style="flex:1;min-width:160px">${leg}</div></div>`;
 }
 function toggleCat(c){openCat=openCat===c?null:c;renderSpending();}
 function setOwner(id,v){const t=S.transactions.find(x=>x.id===id);if(t){t.owner=v;save();}}
@@ -1449,7 +1469,7 @@ function cancelImport(){pending=[];const pv=document.getElementById('impPreview'
 
 /* ============ DADOS ============ */
 function exportData(){const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-financeiro-'+new Date().toISOString().slice(0,10)+'.json';a.click();}
-function importBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.accounts){S=normalizeState(d);save();activeAcc=null;render();buildMonths();toast('Backup restaurado');}}catch(err){toast('Arquivo inválido');}};r.readAsText(f);}
+function importBackup(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.accounts){S=normalizeState(d);save();activeAcc=null;buildMonths();navigateTo('overview');toast('Backup restaurado');}else toast('Arquivo inválido');}catch(err){toast('Arquivo inválido');}};r.readAsText(f);}
 function normalizeState(d){if(!d.categories||typeof d.categories[0]==='string')d.categories=clone(DEF_CATS);ensureExtraCats(d);d.budgets=d.budgets||{};d.rules=d.rules||clone(DEF_RULES);d.cards=d.cards||[];d.bills=d.bills||[];d.bills.forEach(b=>{b.payments=b.payments||{};});if(typeof d.income!=='number')d.income=0;return d;}
 
 /* ===== SINCRONIZAÇÃO GOOGLE DRIVE ===== */
