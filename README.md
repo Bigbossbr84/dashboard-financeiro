@@ -2,6 +2,8 @@
 
 Dashboard financeiro pessoal em **arquivo único** (`index.html`) — HTML/CSS/JS puro, roda no navegador (celular ou PC). Os dados ficam no `localStorage` do aparelho e, opcionalmente, sincronizam pelo **Google Drive** entre você e a Keli.
 
+**🌐 No ar em:** <https://bigbossbr84.github.io/dashboard-financeiro/>
+
 ## Como rodar
 Abra o `index.html` no navegador (duplo clique) ou rode um servidor local:
 ```
@@ -26,42 +28,33 @@ npx serve .
 
 ---
 
-## Publicar no GitHub Pages (acessar do celular)
+## Sincronização entre celulares (Google OAuth)
 
-### 1. Criar o repositório e enviar os arquivos
-No site do GitHub: **New repository** → nome `dashboard-financeiro` → pode ser **público** (os dados pessoais NÃO vão pro Git, só o app). Depois, nesta pasta:
-```
-git remote add origin https://github.com/SEU_USUARIO/dashboard-financeiro.git
-git push -u origin main
-```
+O app já está publicado. Para você e a Keli verem os mesmos dados ao vivo, configure o Google uma vez:
 
-### 2. Ativar o GitHub Pages
-No repositório: **Settings → Pages → Build and deployment → Source: Deploy from a branch →
-Branch: `main` / `/ (root)` → Save.**
-Em ~1 minuto o app fica no ar em:
-```
-https://SEU_USUARIO.github.io/dashboard-financeiro/
-```
-Abra esse link no celular (seu e o da Keli) e adicione à tela inicial.
-
-### 3. Configurar o Google OAuth (necessário pra sincronização)
+### 1. Configurar o Google OAuth
 1. Acesse <https://console.cloud.google.com/> → crie um projeto.
 2. **APIs e serviços → Biblioteca →** ative a **Google Drive API**.
 3. **Tela de consentimento OAuth →** tipo **Externo** → adicione seu e-mail e o da Keli em **Usuários de teste**.
 4. **Credenciais → Criar credencial → ID do cliente OAuth → Aplicativo da Web.**
-   - **Origens JavaScript autorizadas:** `https://SEU_USUARIO.github.io`
+   - **Origens JavaScript autorizadas:** `https://bigbossbr84.github.io`  *(só isso, sem `/dashboard-financeiro`)*
 5. Copie o **Client ID** (`...apps.googleusercontent.com`).
 
-### 4. Conectar dentro do app
-No app (Configurações → Sincronização): cole o **Client ID** → **Conectar Google** →
-marque **Sincronizar automaticamente** → em **email da Keli** digite o Gmail dela → **Compartilhar**.
+### 2. Conectar dentro do app
+Abra <https://bigbossbr84.github.io/dashboard-financeiro/> → Configurações → Sincronização:
+cole o **Client ID** → **Conectar Google** → marque **Sincronizar automaticamente** →
+em **email da Keli** digite o Gmail dela → **Compartilhar**.
 A Keli abre o mesmo link, cola o **mesmo Client ID**, conecta com o Gmail dela e os dados aparecem.
 
 > **Dica:** ao abrir o app, clique em **Conectar Google** para baixar a versão mais recente
 > (o login do Google expira a cada sessão, por segurança).
 
+## Atualizar o app publicado
+Depois de editar o `index.html`, basta `git push` — o GitHub Pages reconstrói sozinho em ~1 min.
+
 ## Roadmap
 - [x] Data da última atualização do saldo (visível na Visão Geral e em Contas)
 - [x] Sincronização automática via Google Drive (GIS OAuth)
+- [x] Conciliação de contas a pagar com o extrato
 - [x] Layout para celular (responsivo)
-- [ ] Publicar no GitHub Pages — **siga os passos acima** (precisa ser feito no navegador)
+- [x] Publicado no GitHub Pages
