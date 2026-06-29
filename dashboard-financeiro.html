@@ -734,7 +734,9 @@ function buildMonths(){
 }
 
 /* ============ CÁLCULOS ============ */
-function computeBalance(id){const a=S.accounts.find(x=>x.id===id);if(!a)return 0;if(a.currentBalance!=null&&a.currentBalance!==''&&!isNaN(+a.currentBalance))return +a.currentBalance;const today=new Date().toISOString().slice(0,10);let b=+a.balance||0;S.transactions.filter(t=>t.account===id&&t.date<=today).forEach(t=>b+=t.amount);return b;}
+function computeBalance(id){const a=S.accounts.find(x=>x.id===id);if(!a)return 0;
+  if(a.stmtBalance!=null&&a.stmtBalance!==''&&!isNaN(+a.stmtBalance))return +a.stmtBalance; // saldo vindo do extrato (fonte da verdade)
+  const today=new Date().toISOString().slice(0,10);let b=+a.balance||0;S.transactions.filter(t=>t.account===id&&t.date<=today).forEach(t=>b+=t.amount);return b;}
 function nowStr(){try{return new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 function fmtTs(iso){if(!iso)return '';try{return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch(e){return '';}}
 /* devolve {ts, label} da atualização de saldo mais recente entre as contas */
@@ -1217,32 +1219,31 @@ function renderAccounts(){
   const el=document.getElementById('accountsList');if(!el)return;
   const tEl=document.getElementById('accTotal');if(tEl)tEl.textContent=fmt(totalBalance());
   const uEl=document.getElementById('accUpdated');if(uEl){const u=lastBalanceUpdate();uEl.textContent=u?'Saldo atualizado pela última vez em '+u.label:'';uEl.style.display=u?'':'none';}
-  el.innerHTML=S.accounts.map(a=>{const comp=compRaw(a);const cnt=S.transactions.filter(t=>t.account===a.id).length;
-    const dates=S.transactions.filter(t=>t.account===a.id).map(t=>t.date).sort();const last=dates.length?dates[dates.length-1]:'';
+  el.innerHTML=S.accounts.map(a=>{const comp=computeBalance(a.id);const cnt=S.transactions.filter(t=>t.account===a.id).length;
+    const fromStmt=a.stmtBalance!=null&&a.stmtBalance!==''&&!isNaN(+a.stmtBalance);
+    const sub=fromStmt?`Saldo informado pelo extrato${a.stmtBalanceDate?' ('+a.stmtBalanceDate.split('-').reverse().join('/')+')':''} · ${cnt} lançamentos importados`:`Saldo inicial ${fmt(+a.balance||0)} + ${cnt} lançamento${cnt!==1?'s':''}`;
     return `<div class="card" style="margin-bottom:12px">
       <div class="row sp"><div><b style="font-size:15px">${a.name}</b> <span class="tag">${a.bank||a.type}</span></div>
-        <div style="white-space:nowrap"><button class="ibtn" title="Editar / saldo inicial" onclick="openAcc('${a.id}')">${ic('edit',15)}</button><button class="ibtn dng" title="Excluir" onclick="delAcc('${a.id}')">${ic('trash',15)}</button></div></div>
-      <div class="row sp" style="margin-top:10px;align-items:baseline"><span class="label">Saldo pelo extrato</span><b class="num ${comp<0?'neg':''}" style="font-size:21px">${fmt(comp)}</b></div>
-      <div class="help">Saldo inicial ${fmt(+a.balance||0)} + ${cnt} lançamento${cnt!==1?'s':''}${last?` · dados até ${last.split('-').reverse().join('/')}`:''}</div>
+        <div style="white-space:nowrap"><button class="ibtn" title="Editar" onclick="openAcc('${a.id}')">${ic('edit',15)}</button><button class="ibtn dng" title="Excluir" onclick="delAcc('${a.id}')">${ic('trash',15)}</button></div></div>
+      <div class="row sp" style="margin-top:10px;align-items:baseline"><span class="label">Saldo</span><b class="num ${comp<0?'neg':''}" style="font-size:21px">${fmt(comp)}</b></div>
+      <div class="help">${sub}</div>
       <div class="row" style="gap:8px;margin-top:12px;align-items:flex-end">
-        <div style="flex:1"><label>Saldo real hoje (do app do banco)</label><input id="real_${a.id}" type="number" step="0.01" placeholder="ex: ${comp.toFixed(2)}"></div>
-        <button class="btn sm" onclick="setRealBalance('${a.id}',document.getElementById('real_${a.id}').value)">Bater saldo</button>
+        <div style="flex:1"><label>Corrigir saldo manualmente (opcional)</label><input id="real_${a.id}" type="number" step="0.01" placeholder="ex: ${comp.toFixed(2)}"></div>
+        <button class="btn sm ghost" onclick="setRealBalance('${a.id}',document.getElementById('real_${a.id}').value)">Definir</button>
       </div>
-      <div class="help" style="margin-top:6px">Digite o saldo atual que aparece no banco — o app calibra o ponto de partida. Depois, os extratos continuam ajustando sozinhos.</div>
+      <div class="help" style="margin-top:6px">Normalmente não precisa — o saldo vem do extrato ao importar. Use só se quiser corrigir na mão.</div>
       ${/itau/i.test((a.bank||'')+' '+(a.name||''))?`<div style="margin-top:10px"><button class="btn ghost sm" onclick="document.getElementById('pdf_${a.id}').click()"><span data-ic2="download"></span> Importar extrato do Itaú (PDF)</button><input type="file" id="pdf_${a.id}" accept="application/pdf,.pdf" style="display:none" onchange="importAccountPdf('${a.id}',event)"></div>`:''}
     </div>`;}).join('')+
-    `<div class="help" style="margin:4px 0 12px">O saldo total no Início é a soma das contas. Para acertar uma conta, use <b>Bater saldo</b> com o valor que aparece no app do banco.</div>
+    `<div class="help" style="margin:4px 0 12px">O saldo de cada conta vem do <b>próprio extrato</b> ao importar (Itaú "saldo em conta", OFX, ou a coluna saldo do CSV). O total no Início é a soma das contas.</div>
     <button class="btn ghost block" onclick="openAcc()"><span data-ic2="plus"></span> Adicionar conta</button>`;
   injectIcons(el);
 }
-/* ancora a conta no saldo real de hoje: define o saldo inicial pra trás, sem somar nem congelar */
+/* define o saldo da conta diretamente (igual ao que veio do extrato) */
 function setRealBalance(id,v){
   const a=S.accounts.find(x=>x.id===id);if(!a)return;
   if(v===''||v==null||isNaN(+v))return toast('Digite o saldo atual do banco');
-  const val=+v;const today=new Date().toISOString().slice(0,10);
-  let sum=0;S.transactions.forEach(t=>{if(t.account===id&&t.date<=today)sum+=(+t.amount||0);});
-  a.balance=Math.round((val-sum)*100)/100;
-  save();render();toast('Saldo de '+a.name+' ajustado para '+fmt(val));
+  a.stmtBalance=Math.round(+v*100)/100;a.stmtBalanceDate=new Date().toISOString().slice(0,10);
+  save();render();toast('Saldo de '+a.name+' definido como '+fmt(+v));
 }
 function loadTesseract(){return new Promise((res,rej)=>{if(window.Tesseract)return res();const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=()=>res();s.onerror=()=>rej(new Error('offline'));document.head.appendChild(s);});}
 function extractBalance(text){
@@ -1466,9 +1467,22 @@ function csvToItems(txt){const lines=txt.split(/\r?\n/).filter(l=>l.trim());cons
     if(date&&amt!==null&&amt!==0)items.push({date,description:desc.join(' ').replace(/\s+/g,' '),amount:amt});});
   return items;}
 function parseAnyToItems(txt){return /<OFX>|<STMTTRN>/i.test(txt)?ofxToItems(txt):csvToItems(txt);}
-function parseOFX(txt){const m=txt.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*(-?[\d.,]+)/i);impSaldoConta=m?parseNum(m[1]):null;showPreview(ofxToItems(txt));}
+/* saldo final de um CSV: na linha com data mais recente, o último valor monetário costuma ser a coluna "saldo" */
+function detectCsvBalance(txt){
+  const lines=txt.split(/\r?\n/);const moneyRe=/-?\(?\s*R?\$?\s*\d{1,3}(?:\.\d{3})*,\d{2}\)?/g;const dateRe=/\b(\d{2})[\/-](\d{2})[\/-](\d{2,4})\b/;
+  let bestDate='',bestBal=null;
+  lines.forEach(line=>{if(/saldo total|limite|bloquead/i.test(line))return;const dm=line.match(dateRe);if(!dm)return;const monies=line.match(moneyRe);if(!monies||monies.length<2)return;let y=dm[3];if(y.length===2)y='20'+y;const iso=y+'-'+dm[2]+'-'+dm[1];const bal=parseNum(monies[monies.length-1]);if(!bestDate||iso>=bestDate){bestDate=iso;bestBal=bal;}});
+  return bestBal;
+}
+/* saldo informado pelo extrato, qualquer formato */
+function detectStatementBalance(txt){
+  if(/<OFX>|<STMTTRN>/i.test(txt)){const m=txt.match(/<LEDGERBAL>[\s\S]*?<BALAMT>\s*(-?[\d.,]+)/i);return m?parseNum(m[1]):null;}
+  if(looksItau(txt))return detectItauSaldo(txt);
+  return detectCsvBalance(txt);
+}
+function parseOFX(txt){impSaldoConta=detectStatementBalance(txt);showPreview(ofxToItems(txt));}
 function splitCsv(line,d){const out=[];let cur='',q=false;for(const ch of line){if(ch==='"')q=!q;else if(ch===d&&!q){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out.map(s=>s.replace(/^"|"$/g,'').trim());}
-function parseCSV(txt){impSaldoConta=null;detectOpening(txt);showPreview(csvToItems(txt));}
+function parseCSV(txt){impSaldoConta=detectStatementBalance(txt);detectOpening(txt);showPreview(csvToItems(txt));}
 function parseStatement(txt,opts){opts=opts||{};const lines=txt.split(/\r?\n/).filter(l=>l.trim());const items=[];
   lines.forEach(line=>{if(/saldo/i.test(line))return;let date=parseDate(line);
     if(!date&&opts.ddmm){const m2=line.match(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?:\s|$)/);if(m2){const y=opts.year||new Date().getFullYear();date=`${y}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`;}}
@@ -1504,7 +1518,7 @@ function detectItauSaldo(txt){
   for(let k=0;k<lines.length;k++)if(/saldo do dia/i.test(lines[k])){const m=(lines[k+1]||'').match(/-?\d{1,3}(?:\.\d{3})*,\d{2}/);if(m)return parseNum(m[0]);}
   return null;
 }
-function analyzeText(txt){detectOpening(txt);impSaldoConta=looksItau(txt)?detectItauSaldo(txt):null;showPreview(looksItau(txt)?parseItau(txt):parseStatement(txt));}
+function analyzeText(txt){detectOpening(txt);impSaldoConta=detectStatementBalance(txt);showPreview(looksItau(txt)?parseItau(txt):parseStatement(txt));}
 function parsePaste(){const txt=document.getElementById('impPaste').value;if(!txt.trim())return toast('Cole o texto primeiro');analyzeText(txt);}
 /* ===== LEITURA DE PDF (Itaú e outros) ===== */
 function loadPdfJs(){return new Promise((res,rej)=>{if(window.pdfjsLib)return res();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';s.onload=()=>{try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}res();};s.onerror=()=>rej(new Error('sem internet para o leitor de PDF'));document.head.appendChild(s);});}
@@ -1546,7 +1560,7 @@ function showPreview(items){
   document.getElementById('impCount').textContent=pending.length+' itens';const pv=document.getElementById('impPreview');
   if(!pending.length){pv.className='empty';pv.style.maxHeight='';pv.innerHTML=`<div class="big">${ic('alert',40)}</div>Nenhuma transação reconhecida. Cole o texto do extrato ou verifique o arquivo.`;document.getElementById('impActions').style.display='none';return;}
   pv.className='';pv.style.maxHeight='440px';pv.style.overflow='auto';
-  pv.innerHTML=(impSaldoConta!=null?`<div class="help" style="margin-bottom:8px;color:var(--green)">💰 Saldo em conta detectado: <b>${fmt(impSaldoConta)}</b> — vou ajustar o saldo desta conta ao confirmar.</div>`:'')+`<div class="help" style="margin-bottom:8px">Confira a <b>categoria</b> de cada linha e ajuste se precisar antes de confirmar.</div><table><thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Categoria</th></tr></thead><tbody>`+pending.map((i,idx)=>`<tr><td style="white-space:nowrap">${i.date.split('-').reverse().join('/')}</td><td style="font-size:12px">${i.description||'—'}</td><td class="num ${i.amount<0?'neg':'pos'}">${fmt(i.amount)}</td><td>${impCatSelect(idx,i.category)}</td></tr>`).join('')+`</tbody></table>`;
+  pv.innerHTML=(impSaldoConta!=null?`<div class="help" style="margin-bottom:8px;color:var(--green)">💰 Saldo do extrato detectado: <b>${fmt(impSaldoConta)}</b> — será o saldo desta conta ao confirmar.</div>`:'')+`<div class="help" style="margin-bottom:8px">Confira a <b>categoria</b> de cada linha e ajuste se precisar antes de confirmar.</div><table><thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Categoria</th></tr></thead><tbody>`+pending.map((i,idx)=>`<tr><td style="white-space:nowrap">${i.date.split('-').reverse().join('/')}</td><td style="font-size:12px">${i.description||'—'}</td><td class="num ${i.amount<0?'neg':'pos'}">${fmt(i.amount)}</td><td>${impCatSelect(idx,i.category)}</td></tr>`).join('')+`</tbody></table>`;
   document.getElementById('impActions').style.display='flex';
 }
 function confirmImport(){
@@ -1555,8 +1569,10 @@ function confirmImport(){
   const n=fresh.length;
   const accId=document.getElementById('impAcc').value;const a=S.accounts.find(x=>x.id===accId);
   let saldoMsg='';
-  if(impSaldoConta!=null&&a){const today=new Date().toISOString().slice(0,10);let sum=0;S.transactions.forEach(t=>{if(t.account===accId&&t.date<=today)sum+=(+t.amount||0);});a.balance=Math.round((impSaldoConta-sum)*100)/100;saldoMsg=' · saldo da conta ajustado para '+fmt(impSaldoConta);}
-  else if(impOpening!=null&&a&&confirm('O extrato traz SALDO ANTERIOR de '+fmt(impOpening)+'.\nDefinir como saldo inicial de "'+a.name+'"? Isso faz o Saldo total bater com o banco.')){a.balance=impOpening;}
+  if(impSaldoConta!=null&&a){
+    const latest=pending.reduce((m,i)=>i.date>m?i.date:m,'');
+    if(!a.stmtBalanceDate||!latest||latest>=a.stmtBalanceDate){a.stmtBalance=Math.round(impSaldoConta*100)/100;a.stmtBalanceDate=latest||new Date().toISOString().slice(0,10);saldoMsg=' · saldo atualizado para '+fmt(impSaldoConta);}
+  }
   impOpening=null;impSaldoConta=null;pending=[];save();buildMonths();render();cancelImport();toast(n+' importadas'+(dups?` · ${dups} duplicados ignorados`:'')+saldoMsg);
 }
 function cancelImport(){pending=[];impSaldoConta=null;impOpening=null;const pv=document.getElementById('impPreview');pv.className='empty';pv.style.maxHeight='';pv.innerHTML=`<div class="big">${ic('file',40)}</div>Importe um arquivo ou cole um texto.`;document.getElementById('impActions').style.display='none';document.getElementById('impCount').textContent='0 itens';document.getElementById('impFile').value='';}
@@ -1629,7 +1645,7 @@ async function syncDriveStatements(){
     if(!fresh.length){impDrvStatus(`Achei ${files.length} arquivo(s), mas todos já foram importados antes. Para reimportar, suba um arquivo novo na pasta.`,'var(--amber)');return;}
     impDrvStatus(`Lendo ${fresh.length} arquivo(s)...`);
     const parsed=[];
-    for(const f of fresh){try{const r=await driveApi('drive/v3/files/'+f.id+'?alt=media');const txt=await r.text();parsed.push({file:f,items:parseAnyToItems(txt),account:guessAccount(f.name)});}catch(e){parsed.push({file:f,items:[],account:guessAccount(f.name),error:true});}}
+    for(const f of fresh){try{const r=await driveApi('drive/v3/files/'+f.id+'?alt=media');const txt=await r.text();parsed.push({file:f,items:parseAnyToItems(txt),account:guessAccount(f.name),balance:detectStatementBalance(txt)});}catch(e){parsed.push({file:f,items:[],account:guessAccount(f.name),error:true});}}
     impDrvStatus(`${fresh.length} arquivo(s) encontrado(s) — confira na janela.`,'var(--green)');
     openDriveImportModal(parsed);
   }catch(e){impDrvStatus('Erro ao ler a pasta: '+(e&&e.message||e)+'. Se diz "reconecte", clique em Conectar Google de novo.','var(--red)');}
@@ -1656,7 +1672,9 @@ function applyDriveImport(){
   let total=0,dups=0,outros=0;
   mod.querySelectorAll('input[type=checkbox][data-idx]').forEach(c=>{
     if(!c.checked)return;const p=driveImportData[+c.dataset.idx];if(!p||!p.items.length)return;
-    p.items.forEach(it=>{const cat=autoCat(it.description,it.amount);const t={...it,category:cat,owner:autoOwner(it.description),account:p.account};if(isDup(t)){dups++;return;}S.transactions.push({...t,id:uid()});total++;if(cat==='Outros')outros++;});
+    let latest='';
+    p.items.forEach(it=>{const cat=autoCat(it.description,it.amount);const t={...it,category:cat,owner:autoOwner(it.description),account:p.account};if(it.date>latest)latest=it.date;if(isDup(t)){dups++;return;}S.transactions.push({...t,id:uid()});total++;if(cat==='Outros')outros++;});
+    if(p.balance!=null){const a=S.accounts.find(x=>x.id===p.account);if(a&&(!a.stmtBalanceDate||!latest||latest>=a.stmtBalanceDate)){a.stmtBalance=Math.round(p.balance*100)/100;a.stmtBalanceDate=latest||new Date().toISOString().slice(0,10);}}
     S._importedFiles=S._importedFiles||{};S._importedFiles[p.file.id]={name:p.file.name,when:new Date().toISOString()};
   });
   save();buildMonths();render();closeModal();
