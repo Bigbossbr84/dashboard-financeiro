@@ -417,9 +417,21 @@
 
     <!-- IMPORT -->
     <section class="page" id="page-import">
+      <div class="card" style="margin-bottom:16px">
+        <h3><span class="ht"><span data-ic="save"></span> 1 · Sincronização (Google Drive)</span> <span id="drvStatus" class="tag"></span></h3>
+        <p class="help" style="margin-bottom:10px">Conecte o Google para você e a Keli verem os mesmos dados. Toda vez que abrir o app, clique em <b>Conectar Google</b> para baixar a versão mais recente.</p>
+        <div class="field"><label>Client ID do Google (OAuth)</label><input id="drv_cid" placeholder="000000.apps.googleusercontent.com"></div>
+        <div class="row" style="margin-bottom:10px"><button class="btn" onclick="driveConnect()"><span data-ic="save"></span> Conectar Google</button><button class="btn ghost" onclick="drivePush(false)">Enviar agora</button><button class="btn ghost" onclick="drivePull()">Baixar agora</button></div>
+        <div class="field"><label style="font-weight:500;color:var(--txt);display:flex;align-items:center;gap:8px"><input type="checkbox" id="drv_auto" onchange="toggleDriveAuto(this.checked)" style="width:auto">Sincronizar automaticamente ao alterar</label></div>
+        <div class="row" style="margin-bottom:10px"><input id="drv_email" placeholder="email da Keli (Google)" style="flex:1"><button class="btn sm" onclick="driveShare(document.getElementById('drv_email').value)">Compartilhar</button></div>
+        <div class="field" style="margin-bottom:0"><label>Pasta de extratos (cole o link do Drive)</label>
+          <div class="row"><input id="drv_folder" placeholder="https://drive.google.com/drive/folders/..." style="flex:1"><button class="btn sm" onclick="saveStmtFolder(document.getElementById('drv_folder').value)">Salvar pasta</button></div>
+          <div class="help" id="drv_folder_st">Onde você solta os CSV/OFX. Se deixar vazio, o app usa/cria uma pasta chamada "Extratos Dashboard".</div>
+        </div>
+      </div>
       <div class="grid g2">
         <div class="card">
-          <h3><span class="ht"><span data-ic="download"></span> Importar extrato</span></h3>
+          <h3><span class="ht"><span data-ic="download"></span> 2 · Importar extrato</span></h3>
           <button class="btn block" style="margin-bottom:8px" onclick="syncDriveStatements()"><span data-ic="save"></span> Buscar extratos na pasta do Drive</button>
           <div id="impDriveStatus" class="help" style="margin:0 0 12px;min-height:18px"></div>
           <div class="help" style="margin:0 0 14px">Solte os arquivos <b>CSV/OFX</b> na pasta do Drive e toque acima. Ou importe um arquivo do aparelho abaixo.</div>
@@ -443,6 +455,17 @@
             <button class="btn" onclick="confirmImport()"><span data-ic="check"></span> Confirmar</button>
             <button class="btn ghost" onclick="cancelImport()">Cancelar</button>
           </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3><span class="ht"><span data-ic="alert"></span> 3 · Dados e limpeza</span></h3>
+        <div class="row">
+          <button class="btn ghost" onclick="exportData()"><span data-ic="save"></span> Exportar backup</button>
+          <button class="btn ghost" onclick="document.getElementById('importJson').click()"><span data-ic="upload"></span> Restaurar backup</button>
+          <input type="file" id="importJson" accept=".json" style="display:none" onchange="importBackup(event)">
+          <button class="btn ghost" onclick="analyzeData()"><span data-ic="search"></span> Analisar (duplicados/transferências)</button>
+          <button class="btn ghost" onclick="loadDemo()"><span data-ic="trending"></span> Dados de exemplo</button>
+          <button class="btn danger" onclick="wipe()"><span data-ic="trash"></span> Apagar tudo</button>
         </div>
       </div>
     </section>
@@ -469,30 +492,6 @@
       <div class="card" style="margin-top:16px">
         <h3><span class="ht"><span data-ic="tag"></span> Categorias e subcategorias</span></h3>
         <div id="catManage"></div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <h3><span class="ht"><span data-ic="save"></span> Sincronização (Google Drive)</span> <span id="drvStatus" class="tag"></span></h3>
-        <p class="help" style="margin-bottom:10px">Salva os dados num arquivo do seu Drive e sincroniza com a Keli. Funciona com o app publicado (GitHub Pages), não no arquivo local. Veja o passo a passo que te enviei no chat.</p>
-        <div class="field"><label>Client ID do Google (OAuth)</label><input id="drv_cid" placeholder="000000.apps.googleusercontent.com"></div>
-        <div class="row" style="margin-bottom:10px"><button class="btn" onclick="driveConnect()"><span data-ic="save"></span> Conectar Google</button><button class="btn ghost" onclick="drivePush(false)">Enviar agora</button><button class="btn ghost" onclick="drivePull()">Baixar agora</button></div>
-        <div class="field"><label style="font-weight:500;color:var(--txt);display:flex;align-items:center;gap:8px"><input type="checkbox" id="drv_auto" onchange="toggleDriveAuto(this.checked)" style="width:auto">Sincronizar automaticamente ao alterar</label></div>
-        <div class="row" style="margin-bottom:10px"><input id="drv_email" placeholder="email da Keli (Google)" style="flex:1"><button class="btn sm" onclick="driveShare(document.getElementById('drv_email').value)">Compartilhar</button></div>
-        <div class="field" style="margin-bottom:0"><label>Pasta de extratos (cole o link do Drive)</label>
-          <div class="row"><input id="drv_folder" placeholder="https://drive.google.com/drive/folders/..." style="flex:1"><button class="btn sm" onclick="saveStmtFolder(document.getElementById('drv_folder').value)">Salvar pasta</button></div>
-          <div class="help" id="drv_folder_st">Onde você solta os CSV/OFX. Se deixar vazio, o app usa/cria uma pasta chamada "Extratos Dashboard".</div>
-        </div>
-      </div>
-      <div class="card" style="margin-top:16px">
-        <h3><span class="ht"><span data-ic="alert"></span> Dados</span></h3>
-        <button class="btn block" style="margin-bottom:12px" onclick="loadMinhasContas()"><span data-ic="download"></span> Limpar e carregar minhas contas (Junho 2026)</button>
-        <div class="row">
-          <button class="btn ghost" onclick="exportData()"><span data-ic="save"></span> Exportar backup</button>
-          <button class="btn ghost" onclick="document.getElementById('importJson').click()"><span data-ic="upload"></span> Restaurar</button>
-          <input type="file" id="importJson" accept=".json" style="display:none" onchange="importBackup(event)">
-          <button class="btn ghost" onclick="analyzeData()"><span data-ic="search"></span> Analisar dados (duplicados/transferências)</button>
-          <button class="btn ghost" onclick="loadDemo()"><span data-ic="trending"></span> Dados de exemplo</button>
-          <button class="btn danger" onclick="wipe()"><span data-ic="trash"></span> Apagar tudo</button>
-        </div>
       </div>
     </section>
 
@@ -1147,9 +1146,12 @@ function renderSettings(){
   document.getElementById('ruleCat').innerHTML=S.categories.map(c=>`<option>${c.name}</option>`).join('');
   document.getElementById('rulesList').innerHTML=S.rules.map((r,i)=>`<div class="row sp" style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">"<b>${r.match}</b>" → <span class="tag">${r.cat}</span><button class="ibtn dng" onclick="delRule(${i})">${ic('trash',14)}</button></div>`).join('')||'<div class="mut">Nenhuma regra.</div>';
   document.getElementById('catManage').innerHTML=S.categories.map((c,i)=>`<div style="padding:11px 0;border-bottom:1px solid var(--line)"><div class="row sp"><span style="display:flex;align-items:center;gap:10px;font-weight:600"><span class="cicon" style="width:30px;height:30px;background:${c.color}22;color:${c.color}">${ic(c.icon,16)}</span>${c.name} ${c.kind==='in'?'<span class="tag">receita</span>':''}</span><span class="mut" style="font-size:12px">${(c.subs||[]).length} subcategorias</span></div><div style="font-size:12px;color:var(--mut2);margin-top:6px;padding-left:40px">${(c.subs||[]).join(' · ')||'—'}</div></div>`).join('');
+}
+function prefillDrive(){
   const dc=driveCfg();const cidEl=document.getElementById('drv_cid');if(cidEl&&!cidEl.value)cidEl.value=dc.clientId||DRIVE_CLIENT_ID;const auEl=document.getElementById('drv_auto');if(auEl)auEl.checked=!!dc.auto;driveState.auto=!!dc.auto;
   const sf=stmtFolderCfg();const fEl=document.getElementById('drv_folder');if(fEl&&!fEl.value&&sf)fEl.value=sf;const fSt=document.getElementById('drv_folder_st');if(fSt&&sf)fSt.textContent='Pasta definida ✓ — vale também no celular após sincronizar';
 }
+function renderImport(){buildImpAcc();prefillDrive();}
 function addRule(){const m=document.getElementById('ruleMatch').value.trim();const c=document.getElementById('ruleCat').value;if(!m)return;S.rules.push({match:m,cat:c});document.getElementById('ruleMatch').value='';save();renderSettings();toast('Regra adicionada');}
 function delRule(i){S.rules.splice(i,1);save();renderSettings();}
 
@@ -1222,6 +1224,7 @@ function renderAccounts(){
         <div style="white-space:nowrap"><button class="ibtn" title="Editar / saldo inicial" onclick="openAcc('${a.id}')">${ic('edit',15)}</button><button class="ibtn dng" title="Excluir" onclick="delAcc('${a.id}')">${ic('trash',15)}</button></div></div>
       <div class="row sp" style="margin-top:10px;align-items:baseline"><span class="label">Saldo pelo extrato</span><b class="num ${comp<0?'neg':''}" style="font-size:21px">${fmt(comp)}</b></div>
       <div class="help">Saldo inicial ${fmt(+a.balance||0)} + ${cnt} lançamento${cnt!==1?'s':''}${last?` · dados até ${last.split('-').reverse().join('/')}`:''}</div>
+      ${/itau/i.test((a.bank||'')+' '+(a.name||''))?`<div style="margin-top:12px"><button class="btn ghost sm" onclick="document.getElementById('pdf_${a.id}').click()"><span data-ic2="download"></span> Importar extrato do Itaú (PDF)</button><input type="file" id="pdf_${a.id}" accept="application/pdf,.pdf" style="display:none" onchange="importAccountPdf('${a.id}',event)"></div>`:''}
     </div>`;}).join('')+
     `<div class="help" style="margin:4px 0 12px">O saldo vem sempre do extrato (saldo inicial + lançamentos importados). Para ajustar o ponto de partida, toque em editar e mude o <b>saldo inicial</b>.</div>
     <button class="btn ghost block" onclick="openAcc()"><span data-ic2="plus"></span> Adicionar conta</button>`;
@@ -1464,6 +1467,36 @@ function parseStatement(txt,opts){opts=opts||{};const lines=txt.split(/\r?\n/).f
     items.push({date,description:desc.replace(/\s+/g,' ').trim(),amount:amt});});
   return items;}
 function parsePaste(){const txt=document.getElementById('impPaste').value;if(!txt.trim())return toast('Cole o texto primeiro');detectOpening(txt);showPreview(parseStatement(txt));}
+/* ===== LEITURA DE PDF (Itaú e outros) ===== */
+function loadPdfJs(){return new Promise((res,rej)=>{if(window.pdfjsLib)return res();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';s.onload=()=>{try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}res();};s.onerror=()=>rej(new Error('sem internet para o leitor de PDF'));document.head.appendChild(s);});}
+async function extractPdfText(file){
+  await loadPdfJs();
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let out='';
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);const c=await page.getTextContent();
+    let lastY=null,line='';
+    c.items.forEach(it=>{const y=it.transform&&it.transform[5];if(lastY!==null&&y!=null&&Math.abs(y-lastY)>3){out+=line.trim()+'\n';line='';}line+=(it.str||'')+' ';if(y!=null)lastY=y;});
+    out+=line.trim()+'\n';
+  }
+  return out;
+}
+async function importAccountPdf(accId,e){
+  const f=e.target.files[0];if(!f)return;e.target.value='';
+  toast('Lendo o PDF... (pode levar alguns segundos)');
+  try{
+    const txt=await extractPdfText(f);
+    if(!txt.trim())return toast('Não consegui ler texto do PDF (pode ser um PDF de imagem).');
+    navigateTo('import');
+    const sel=document.getElementById('impAcc');if(sel)sel.value=accId;
+    detectOpening(txt);
+    showPreview(parseStatement(txt));
+    const n=(pending||[]).length;
+    if(n)toast(n+' lançamentos lidos do PDF — confira e confirme');
+    else toast('Não reconheci lançamentos no PDF — tente copiar/colar o texto');
+  }catch(err){toast('Não foi possível ler o PDF: '+(err&&err.message||err));}
+}
 /* deduplicação */
 function txKey(t){return (t.date||'')+'|'+Math.round((t.amount||0)*100)+'|'+(t.description||'').trim().toLowerCase().slice(0,40)+'|'+(t.card||t.account||'');}
 function isDup(item){const k=txKey(item);return S.transactions.some(t=>txKey(t)===k);}
@@ -1781,7 +1814,7 @@ function render(){
   if(active==='cards')renderCards();
   if(active==='bills')renderBills();
   if(active==='projection')renderProjection();
-  if(active==='import')buildImpAcc();
+  if(active==='import')renderImport();
   if(active==='settings')renderSettings();
 }
 injectIcons();setThemeBtn(document.body.dataset.theme);buildMonths();buildImpAcc();render();
