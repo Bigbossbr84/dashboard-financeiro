@@ -420,8 +420,9 @@
       <div class="grid g2">
         <div class="card">
           <h3><span class="ht"><span data-ic="download"></span> Importar extrato</span></h3>
-          <button class="btn block" style="margin-bottom:14px" onclick="syncDriveStatements()"><span data-ic="save"></span> Buscar extratos na pasta do Drive</button>
-          <div class="help" style="margin:-8px 0 14px">Solte os arquivos <b>CSV/OFX</b> na pasta <b>Extratos Dashboard</b> do seu Google Drive e toque acima. Ou importe um arquivo do aparelho abaixo.</div>
+          <button class="btn block" style="margin-bottom:8px" onclick="syncDriveStatements()"><span data-ic="save"></span> Buscar extratos na pasta do Drive</button>
+          <div id="impDriveStatus" class="help" style="margin:0 0 12px;min-height:18px"></div>
+          <div class="help" style="margin:0 0 14px">Solte os arquivos <b>CSV/OFX</b> na pasta do Drive e toque acima. Ou importe um arquivo do aparelho abaixo.</div>
           <div class="field"><label>Conta de destino</label><select id="impAcc"></select></div>
           <div class="field"><label>Arquivo (CSV, OFX, TXT)</label>
             <input type="file" id="impFile" accept=".csv,.ofx,.txt,.qfx" onchange="handleFile(event)">
@@ -1136,7 +1137,7 @@ function renderSettings(){
   document.getElementById('rulesList').innerHTML=S.rules.map((r,i)=>`<div class="row sp" style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">"<b>${r.match}</b>" → <span class="tag">${r.cat}</span><button class="ibtn dng" onclick="delRule(${i})">${ic('trash',14)}</button></div>`).join('')||'<div class="mut">Nenhuma regra.</div>';
   document.getElementById('catManage').innerHTML=S.categories.map((c,i)=>`<div style="padding:11px 0;border-bottom:1px solid var(--line)"><div class="row sp"><span style="display:flex;align-items:center;gap:10px;font-weight:600"><span class="cicon" style="width:30px;height:30px;background:${c.color}22;color:${c.color}">${ic(c.icon,16)}</span>${c.name} ${c.kind==='in'?'<span class="tag">receita</span>':''}</span><span class="mut" style="font-size:12px">${(c.subs||[]).length} subcategorias</span></div><div style="font-size:12px;color:var(--mut2);margin-top:6px;padding-left:40px">${(c.subs||[]).join(' · ')||'—'}</div></div>`).join('');
   const dc=driveCfg();const cidEl=document.getElementById('drv_cid');if(cidEl&&!cidEl.value)cidEl.value=dc.clientId||DRIVE_CLIENT_ID;const auEl=document.getElementById('drv_auto');if(auEl)auEl.checked=!!dc.auto;driveState.auto=!!dc.auto;
-  const fEl=document.getElementById('drv_folder');if(fEl&&!fEl.value&&dc.stmtFolder)fEl.value=dc.stmtFolder;const fSt=document.getElementById('drv_folder_st');if(fSt&&dc.stmtFolder)fSt.textContent='Pasta definida ✓ (os extratos serão lidos dela)';
+  const sf=stmtFolderCfg();const fEl=document.getElementById('drv_folder');if(fEl&&!fEl.value&&sf)fEl.value=sf;const fSt=document.getElementById('drv_folder_st');if(fSt&&sf)fSt.textContent='Pasta definida ✓ — vale também no celular após sincronizar';
 }
 function addRule(){const m=document.getElementById('ruleMatch').value.trim();const c=document.getElementById('ruleCat').value;if(!m)return;S.rules.push({match:m,cat:c});document.getElementById('ruleMatch').value='';save();renderSettings();toast('Regra adicionada');}
 function delRule(i){S.rules.splice(i,1);save();renderSettings();}
@@ -1509,9 +1510,10 @@ async function driveFind(){const r=await driveApi('drive/v3/files?q='+encodeURIC
 const DRIVE_STMT_FOLDER='Extratos Dashboard';
 let driveImportData=[];
 function parseFolderId(link){link=(link||'').trim();if(!link)return '';const m=link.match(/[-\w]{25,}/);return m?m[0]:link;}
-function saveStmtFolder(link){const id=parseFolderId(link);setDriveCfg(Object.assign(driveCfg(),{stmtFolder:id}));const st=document.getElementById('drv_folder_st');if(st)st.textContent=id?'Pasta definida ✓ (os extratos serão lidos dela)':'Pasta limpa — o app usará "Extratos Dashboard".';toast(id?'Pasta de extratos salva':'Pasta limpa');}
+function stmtFolderCfg(){return (S&&S.stmtFolder)||driveCfg().stmtFolder||'';}
+function saveStmtFolder(link){const id=parseFolderId(link);S.stmtFolder=id;setDriveCfg(Object.assign(driveCfg(),{stmtFolder:id}));save();const st=document.getElementById('drv_folder_st');if(st)st.textContent=id?'Pasta definida ✓ — vale também no celular após sincronizar':'Pasta limpa — o app usará "Extratos Dashboard".';toast(id?'Pasta de extratos salva':'Pasta limpa');}
 async function driveFolderId(){
-  const cfgId=driveCfg().stmtFolder;
+  const cfgId=stmtFolderCfg();
   if(cfgId){try{await driveApi('drive/v3/files/'+cfgId+'?fields=id');return cfgId;}catch(e){toast('Pasta configurada não acessível — usando "Extratos Dashboard"');}}
   const q="name='"+DRIVE_STMT_FOLDER+"' and mimeType='application/vnd.google-apps.folder' and trashed=false";
   const r=await driveApi('drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id)&spaces=drive');const j=await r.json();
@@ -1531,19 +1533,23 @@ function guessAccount(filename){
   for(const a of S.accounts){const toks=recoTokens((a.bank||'')+' '+(a.name||'')).filter(t=>!['banco','conta','principal'].includes(t));if(toks.some(t=>f.includes(t.slice(0,4))))return a.id;}
   return S.accounts[0]&&S.accounts[0].id;
 }
+function impDrvStatus(t,color){const e=document.getElementById('impDriveStatus');if(e){e.innerHTML=t;e.style.color=color||'var(--mut)';}}
 async function syncDriveStatements(){
-  if(!driveState.token){toast('Conecte ao Google primeiro');navigateTo('settings');return;}
-  toast('Procurando extratos na pasta do Drive...');
+  if(!driveState.token){impDrvStatus('⚠️ Conecte o Google primeiro (Configurações → Conectar Google).',  'var(--amber)');toast('Conecte o Google primeiro');return;}
+  impDrvStatus('Procurando extratos na pasta do Drive...');
   try{
     const fid=await driveFolderId();
     const files=await driveListStatements(fid);
+    if(!files.length){impDrvStatus('A pasta está vazia (ou sem CSV/OFX). Confira se você definiu a pasta certa em Configurações e se soltou os arquivos nela.','var(--amber)');return;}
     const done=S._importedFiles||{};
     const fresh=files.filter(f=>!done[f.id]);
-    if(!fresh.length){toast(files.length?'Nenhum extrato novo na pasta':'Pasta "'+DRIVE_STMT_FOLDER+'" vazia — solte os CSV/OFX lá no Drive');return;}
+    if(!fresh.length){impDrvStatus(`Achei ${files.length} arquivo(s), mas todos já foram importados antes. Para reimportar, suba um arquivo novo na pasta.`,'var(--amber)');return;}
+    impDrvStatus(`Lendo ${fresh.length} arquivo(s)...`);
     const parsed=[];
     for(const f of fresh){try{const r=await driveApi('drive/v3/files/'+f.id+'?alt=media');const txt=await r.text();parsed.push({file:f,items:parseAnyToItems(txt),account:guessAccount(f.name)});}catch(e){parsed.push({file:f,items:[],account:guessAccount(f.name),error:true});}}
+    impDrvStatus(`${fresh.length} arquivo(s) encontrado(s) — confira na janela.`,'var(--green)');
     openDriveImportModal(parsed);
-  }catch(e){toast('Erro ao ler a pasta do Drive');}
+  }catch(e){impDrvStatus('Erro ao ler a pasta: '+(e&&e.message||e)+'. Se diz "reconecte", clique em Conectar Google de novo.','var(--red)');}
 }
 function driveImportSetAcc(idx,v){if(driveImportData[idx])driveImportData[idx].account=v;}
 function openDriveImportModal(parsed){
