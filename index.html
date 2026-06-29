@@ -1129,7 +1129,7 @@ function renderSettings(){
   document.getElementById('ruleCat').innerHTML=S.categories.map(c=>`<option>${c.name}</option>`).join('');
   document.getElementById('rulesList').innerHTML=S.rules.map((r,i)=>`<div class="row sp" style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">"<b>${r.match}</b>" → <span class="tag">${r.cat}</span><button class="ibtn dng" onclick="delRule(${i})">${ic('trash',14)}</button></div>`).join('')||'<div class="mut">Nenhuma regra.</div>';
   document.getElementById('catManage').innerHTML=S.categories.map((c,i)=>`<div style="padding:11px 0;border-bottom:1px solid var(--line)"><div class="row sp"><span style="display:flex;align-items:center;gap:10px;font-weight:600"><span class="cicon" style="width:30px;height:30px;background:${c.color}22;color:${c.color}">${ic(c.icon,16)}</span>${c.name} ${c.kind==='in'?'<span class="tag">receita</span>':''}</span><span class="mut" style="font-size:12px">${(c.subs||[]).length} subcategorias</span></div><div style="font-size:12px;color:var(--mut2);margin-top:6px;padding-left:40px">${(c.subs||[]).join(' · ')||'—'}</div></div>`).join('');
-  const dc=driveCfg();const cidEl=document.getElementById('drv_cid');if(cidEl&&!cidEl.value)cidEl.value=dc.clientId||'';const auEl=document.getElementById('drv_auto');if(auEl)auEl.checked=!!dc.auto;driveState.auto=!!dc.auto;
+  const dc=driveCfg();const cidEl=document.getElementById('drv_cid');if(cidEl&&!cidEl.value)cidEl.value=dc.clientId||DRIVE_CLIENT_ID;const auEl=document.getElementById('drv_auto');if(auEl)auEl.checked=!!dc.auto;driveState.auto=!!dc.auto;
 }
 function addRule(){const m=document.getElementById('ruleMatch').value.trim();const c=document.getElementById('ruleCat').value;if(!m)return;S.rules.push({match:m,cat:c});document.getElementById('ruleMatch').value='';save();renderSettings();toast('Regra adicionada');}
 function delRule(i){S.rules.splice(i,1);save();renderSettings();}
@@ -1474,13 +1474,14 @@ function normalizeState(d){if(!d.categories||typeof d.categories[0]==='string')d
 
 /* ===== SINCRONIZAÇÃO GOOGLE DRIVE ===== */
 const DRIVE_FILE='dashboard-financeiro-dados.json';
+const DRIVE_CLIENT_ID='549001907995-psf6mbu4eb5dk99uuc6385fqssvml6qj.apps.googleusercontent.com';
 let drivePushTimer=null;
 function driveCfg(){try{return JSON.parse(localStorage.getItem('drive_cfg')||'{}');}catch(e){return {};}}
 function setDriveCfg(c){localStorage.setItem('drive_cfg',JSON.stringify(c));}
 function updateDriveStatus(t){const e=document.getElementById('drvStatus');if(e)e.textContent=t;}
 function loadGIS(){return new Promise((res,rej)=>{if(window.google&&google.accounts&&google.accounts.oauth2)return res();const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=()=>res();s.onerror=()=>rej(new Error('GIS'));document.head.appendChild(s);});}
 async function driveConnect(){
-  const cid=(document.getElementById('drv_cid').value||driveCfg().clientId||'').trim();
+  const cid=(document.getElementById('drv_cid').value||driveCfg().clientId||DRIVE_CLIENT_ID||'').trim();
   if(!cid)return toast('Informe o Client ID do Google');
   setDriveCfg(Object.assign(driveCfg(),{clientId:cid}));
   try{await loadGIS();}catch(e){return toast('Sem internet para conectar');}
