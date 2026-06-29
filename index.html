@@ -1442,7 +1442,7 @@ function saveBill(id){
 function delBill(id){if(!confirm('Excluir conta?'))return;S.bills=S.bills.filter(x=>x.id!==id);save();renderBills();}
 
 /* ============ IMPORTAÇÃO ============ */
-let pending=[],impOpening=null;
+let pending=[],impOpening=null,impSaldoConta=null;
 function buildImpAcc(){document.getElementById('impAcc').innerHTML=S.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');}
 function detectOpening(txt){impOpening=null;const sa=(txt||'').split(/\r?\n/).find(l=>/saldo anterior/i.test(l));if(sa){const mm=sa.match(/-?\d{1,3}(?:[.\s]\d{3})*[,.]\d{2}/);if(mm)impOpening=parseNum(mm[0]);}}
 function handleFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const t=r.result;if(/<OFX>|<STMTTRN>/i.test(t))parseOFX(t);else parseCSV(t);};r.readAsText(f,'utf-8');}
@@ -1466,7 +1466,33 @@ function parseStatement(txt,opts){opts=opts||{};const lines=txt.split(/\r?\n/).f
     if(opts.ddmm)desc=desc.replace(/(?:^|\s)\d{1,2}\/\d{1,2}(?=\s|$)/,' ');
     items.push({date,description:desc.replace(/\s+/g,' ').trim(),amount:amt});});
   return items;}
-function parsePaste(){const txt=document.getElementById('impPaste').value;if(!txt.trim())return toast('Cole o texto primeiro');detectOpening(txt);showPreview(parseStatement(txt));}
+/* ===== LEITOR DO EXTRATO ITAÚ (data / descrição / valor em linhas separadas) ===== */
+function looksItau(txt){const ls=txt.split(/\r?\n/).map(l=>l.trim());return ls.filter(l=>/^\d{2}\/\d{2}\/\d{4}$/.test(l)).length>=3;}
+function parseItau(txt){
+  const lines=txt.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const dateRe=/^\d{2}\/\d{2}\/\d{4}$/,moneyRe=/-?\d{1,3}(?:\.\d{3})*,\d{2}/;
+  const items=[];let i=0;
+  while(i<lines.length){
+    if(!dateRe.test(lines[i])){i++;continue;}
+    const iso=lines[i].split('/').reverse().join('-');
+    const desc=(lines[i+1]||'').trim();
+    const m=(lines[i+2]||'').match(moneyRe);
+    if(/saldo do dia|saldo anterior|saldo em conta/i.test(desc)){i+=3;continue;}
+    if(desc&&!dateRe.test(desc)&&m){const amt=parseNum(m[0]);if(amt!==0)items.push({date:iso,description:desc,amount:amt});i+=3;continue;}
+    i++;
+  }
+  return items;
+}
+function detectItauSaldo(txt){
+  const lines=txt.split(/\r?\n/).map(l=>l.trim());
+  const i=lines.findIndex(l=>/^saldo em conta$/i.test(l));
+  if(i>=0)for(let j=i+1;j<Math.min(i+8,lines.length);j++){const m=lines[j].match(/R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2})/);if(m)return parseNum(m[1]);}
+  // alternativa: o "SALDO DO DIA" mais recente (primeiro do texto)
+  for(let k=0;k<lines.length;k++)if(/saldo do dia/i.test(lines[k])){const m=(lines[k+1]||'').match(/-?\d{1,3}(?:\.\d{3})*,\d{2}/);if(m)return parseNum(m[0]);}
+  return null;
+}
+function analyzeText(txt){detectOpening(txt);impSaldoConta=looksItau(txt)?detectItauSaldo(txt):null;showPreview(looksItau(txt)?parseItau(txt):parseStatement(txt));}
+function parsePaste(){const txt=document.getElementById('impPaste').value;if(!txt.trim())return toast('Cole o texto primeiro');analyzeText(txt);}
 /* ===== LEITURA DE PDF (Itaú e outros) ===== */
 function loadPdfJs(){return new Promise((res,rej)=>{if(window.pdfjsLib)return res();const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';s.onload=()=>{try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}res();};s.onerror=()=>rej(new Error('sem internet para o leitor de PDF'));document.head.appendChild(s);});}
 async function extractPdfText(file){
@@ -1490,15 +1516,14 @@ async function importAccountPdf(accId,e){
     if(!txt.trim())return toast('Não consegui ler texto do PDF (pode ser um PDF de imagem).');
     navigateTo('import');
     const sel=document.getElementById('impAcc');if(sel)sel.value=accId;
-    detectOpening(txt);
-    showPreview(parseStatement(txt));
+    analyzeText(txt);
     const n=(pending||[]).length;
     if(n)toast(n+' lançamentos lidos do PDF — confira e confirme');
     else toast('Não reconheci lançamentos no PDF — tente copiar/colar o texto');
   }catch(err){toast('Não foi possível ler o PDF: '+(err&&err.message||err));}
 }
 /* deduplicação */
-function txKey(t){return (t.date||'')+'|'+Math.round((t.amount||0)*100)+'|'+(t.description||'').trim().toLowerCase().slice(0,40)+'|'+(t.card||t.account||'');}
+function txKey(t){return (t.date||'')+'|'+Math.round((t.amount||0)*100)+'|'+(t.description||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'').slice(0,30)+'|'+(t.card||t.account||'');}
 function isDup(item){const k=txKey(item);return S.transactions.some(t=>txKey(t)===k);}
 function setImpCat(arrName,idx,val){const arr=arrName==='cardPending'?cardPending:pending;const it=arr[idx];if(it){it.category=val;learnRule(it.description,val);}}
 function catSelectFor(arr,idx,sel){return `<select onchange="setImpCat('${arr}',${idx},this.value)" style="padding:5px 7px;font-size:12px;min-width:130px">`+S.categories.map(c=>`<option ${c.name===sel?'selected':''}>${c.name}</option>`).join('')+`</select>`;}
@@ -1508,17 +1533,20 @@ function showPreview(items){
   document.getElementById('impCount').textContent=pending.length+' itens';const pv=document.getElementById('impPreview');
   if(!pending.length){pv.className='empty';pv.style.maxHeight='';pv.innerHTML=`<div class="big">${ic('alert',40)}</div>Nenhuma transação reconhecida. Cole o texto do extrato ou verifique o arquivo.`;document.getElementById('impActions').style.display='none';return;}
   pv.className='';pv.style.maxHeight='440px';pv.style.overflow='auto';
-  pv.innerHTML=`<div class="help" style="margin-bottom:8px">Confira a <b>categoria</b> de cada linha e ajuste se precisar antes de confirmar.</div><table><thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Categoria</th></tr></thead><tbody>`+pending.map((i,idx)=>`<tr><td style="white-space:nowrap">${i.date.split('-').reverse().join('/')}</td><td style="font-size:12px">${i.description||'—'}</td><td class="num ${i.amount<0?'neg':'pos'}">${fmt(i.amount)}</td><td>${impCatSelect(idx,i.category)}</td></tr>`).join('')+`</tbody></table>`;
+  pv.innerHTML=(impSaldoConta!=null?`<div class="help" style="margin-bottom:8px;color:var(--green)">💰 Saldo em conta detectado: <b>${fmt(impSaldoConta)}</b> — vou ajustar o saldo desta conta ao confirmar.</div>`:'')+`<div class="help" style="margin-bottom:8px">Confira a <b>categoria</b> de cada linha e ajuste se precisar antes de confirmar.</div><table><thead><tr><th>Data</th><th>Descrição</th><th class="num">Valor</th><th>Categoria</th></tr></thead><tbody>`+pending.map((i,idx)=>`<tr><td style="white-space:nowrap">${i.date.split('-').reverse().join('/')}</td><td style="font-size:12px">${i.description||'—'}</td><td class="num ${i.amount<0?'neg':'pos'}">${fmt(i.amount)}</td><td>${impCatSelect(idx,i.category)}</td></tr>`).join('')+`</tbody></table>`;
   document.getElementById('impActions').style.display='flex';
 }
 function confirmImport(){
   const fresh=pending.filter(i=>!isDup(i));const dups=pending.length-fresh.length;
   fresh.forEach(i=>S.transactions.push({...i,id:uid()}));
   const n=fresh.length;
-  if(impOpening!=null){const accId=document.getElementById('impAcc').value;const a=S.accounts.find(x=>x.id===accId);if(a&&confirm('O extrato traz SALDO ANTERIOR de '+fmt(impOpening)+'.\nDefinir como saldo inicial de "'+a.name+'"? Isso faz o Saldo total bater com o banco.')){a.balance=impOpening;}}
-  impOpening=null;pending=[];save();buildMonths();render();cancelImport();toast(n+' importadas'+(dups?` · ${dups} duplicados ignorados`:''));
+  const accId=document.getElementById('impAcc').value;const a=S.accounts.find(x=>x.id===accId);
+  let saldoMsg='';
+  if(impSaldoConta!=null&&a){const today=new Date().toISOString().slice(0,10);let sum=0;S.transactions.forEach(t=>{if(t.account===accId&&t.date<=today)sum+=(+t.amount||0);});a.balance=Math.round((impSaldoConta-sum)*100)/100;saldoMsg=' · saldo da conta ajustado para '+fmt(impSaldoConta);}
+  else if(impOpening!=null&&a&&confirm('O extrato traz SALDO ANTERIOR de '+fmt(impOpening)+'.\nDefinir como saldo inicial de "'+a.name+'"? Isso faz o Saldo total bater com o banco.')){a.balance=impOpening;}
+  impOpening=null;impSaldoConta=null;pending=[];save();buildMonths();render();cancelImport();toast(n+' importadas'+(dups?` · ${dups} duplicados ignorados`:'')+saldoMsg);
 }
-function cancelImport(){pending=[];const pv=document.getElementById('impPreview');pv.className='empty';pv.style.maxHeight='';pv.innerHTML=`<div class="big">${ic('file',40)}</div>Importe um arquivo ou cole um texto.`;document.getElementById('impActions').style.display='none';document.getElementById('impCount').textContent='0 itens';document.getElementById('impFile').value='';}
+function cancelImport(){pending=[];impSaldoConta=null;impOpening=null;const pv=document.getElementById('impPreview');pv.className='empty';pv.style.maxHeight='';pv.innerHTML=`<div class="big">${ic('file',40)}</div>Importe um arquivo ou cole um texto.`;document.getElementById('impActions').style.display='none';document.getElementById('impCount').textContent='0 itens';document.getElementById('impFile').value='';}
 
 /* ============ DADOS ============ */
 function exportData(){const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backup-financeiro-'+new Date().toISOString().slice(0,10)+'.json';a.click();}
