@@ -420,6 +420,8 @@
       <div class="grid g2">
         <div class="card">
           <h3><span class="ht"><span data-ic="download"></span> Importar extrato</span></h3>
+          <button class="btn block" style="margin-bottom:14px" onclick="syncDriveStatements()"><span data-ic="save"></span> Buscar extratos na pasta do Drive</button>
+          <div class="help" style="margin:-8px 0 14px">Solte os arquivos <b>CSV/OFX</b> na pasta <b>Extratos Dashboard</b> do seu Google Drive e toque acima. Ou importe um arquivo do aparelho abaixo.</div>
           <div class="field"><label>Conta de destino</label><select id="impAcc"></select></div>
           <div class="field"><label>Arquivo (CSV, OFX, TXT)</label>
             <input type="file" id="impFile" accept=".csv,.ofx,.txt,.qfx" onchange="handleFile(event)">
@@ -1426,13 +1428,16 @@ let pending=[],impOpening=null;
 function buildImpAcc(){document.getElementById('impAcc').innerHTML=S.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');}
 function detectOpening(txt){impOpening=null;const sa=(txt||'').split(/\r?\n/).find(l=>/saldo anterior/i.test(l));if(sa){const mm=sa.match(/-?\d{1,3}(?:[.\s]\d{3})*[,.]\d{2}/);if(mm)impOpening=parseNum(mm[0]);}}
 function handleFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const t=r.result;if(/<OFX>|<STMTTRN>/i.test(t))parseOFX(t);else parseCSV(t);};r.readAsText(f,'utf-8');}
-function parseOFX(txt){const blocks=txt.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];const items=blocks.map(b=>{const g=t=>{const m=b.match(new RegExp('<'+t+'>([^<\\r\\n]+)','i'));return m?m[1].trim():'';};const date=parseDate(g('DTPOSTED'));const amt=parseNum(g('TRNAMT'));const desc=g('MEMO')||g('NAME')||g('TRNTYPE');return date?{date,description:desc,amount:amt}:null;}).filter(Boolean);showPreview(items);}
-function splitCsv(line,d){const out=[];let cur='',q=false;for(const ch of line){if(ch==='"')q=!q;else if(ch===d&&!q){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out.map(s=>s.replace(/^"|"$/g,'').trim());}
-function parseCSV(txt){detectOpening(txt);const lines=txt.split(/\r?\n/).filter(l=>l.trim());const delim=(txt.match(/;/g)||[]).length>(txt.match(/,/g)||[]).length?';':',';const items=[];
+function ofxToItems(txt){const blocks=txt.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];return blocks.map(b=>{const g=t=>{const m=b.match(new RegExp('<'+t+'>([^<\\r\\n]+)','i'));return m?m[1].trim():'';};const date=parseDate(g('DTPOSTED'));const amt=parseNum(g('TRNAMT'));const desc=g('MEMO')||g('NAME')||g('TRNTYPE');return date?{date,description:desc,amount:amt}:null;}).filter(Boolean);}
+function csvToItems(txt){const lines=txt.split(/\r?\n/).filter(l=>l.trim());const delim=(txt.match(/;/g)||[]).length>(txt.match(/,/g)||[]).length?';':',';const items=[];
   lines.forEach(line=>{if(/saldo/i.test(line))return;const cells=splitCsv(line,delim);let date=null,amt=null,desc=[];
     cells.forEach(c=>{if(!date){const d=parseDate(c);if(d){date=d;return;}}const money=/^-?\(?[\dR$.,\s]+\)?[CDcd]?$/.test(c.trim())&&/\d/.test(c)&&/[.,]/.test(c);if(money&&amt===null){amt=parseNum(c);return;}if(c.trim()&&!parseDate(c))desc.push(c.trim());});
     if(date&&amt!==null&&amt!==0)items.push({date,description:desc.join(' ').replace(/\s+/g,' '),amount:amt});});
-  showPreview(items);}
+  return items;}
+function parseAnyToItems(txt){return /<OFX>|<STMTTRN>/i.test(txt)?ofxToItems(txt):csvToItems(txt);}
+function parseOFX(txt){showPreview(ofxToItems(txt));}
+function splitCsv(line,d){const out=[];let cur='',q=false;for(const ch of line){if(ch==='"')q=!q;else if(ch===d&&!q){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out.map(s=>s.replace(/^"|"$/g,'').trim());}
+function parseCSV(txt){detectOpening(txt);showPreview(csvToItems(txt));}
 function parseStatement(txt,opts){opts=opts||{};const lines=txt.split(/\r?\n/).filter(l=>l.trim());const items=[];
   lines.forEach(line=>{if(/saldo/i.test(line))return;let date=parseDate(line);
     if(!date&&opts.ddmm){const m2=line.match(/(?:^|\s)(\d{1,2})\/(\d{1,2})(?:\s|$)/);if(m2){const y=opts.year||new Date().getFullYear();date=`${y}-${m2[2].padStart(2,'0')}-${m2[1].padStart(2,'0')}`;}}
@@ -1494,6 +1499,70 @@ async function driveConnect(){
 }
 async function driveApi(path,opts){opts=opts||{};opts.headers=Object.assign({Authorization:'Bearer '+driveState.token},opts.headers||{});const r=await fetch('https://www.googleapis.com/'+path,opts);if(r.status===401){driveState.token=null;updateDriveStatus('Sessão expirou — reconecte');throw new Error('reconecte');}if(!r.ok)throw new Error('drive '+r.status);return r;}
 async function driveFind(){const r=await driveApi('drive/v3/files?q='+encodeURIComponent("name='"+DRIVE_FILE+"' and trashed=false")+'&fields=files(id,modifiedTime)&spaces=drive');const j=await r.json();return (j.files&&j.files[0])||null;}
+
+/* ===== IMPORTAR EXTRATOS DE UMA PASTA DO DRIVE ===== */
+const DRIVE_STMT_FOLDER='Extratos Dashboard';
+let driveImportData=[];
+async function driveFolderId(){
+  const q="name='"+DRIVE_STMT_FOLDER+"' and mimeType='application/vnd.google-apps.folder' and trashed=false";
+  const r=await driveApi('drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id)&spaces=drive');const j=await r.json();
+  if(j.files&&j.files[0])return j.files[0].id;
+  const c=await driveApi('drive/v3/files?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:DRIVE_STMT_FOLDER,mimeType:'application/vnd.google-apps.folder'})});
+  return (await c.json()).id;
+}
+async function driveListStatements(folderId){
+  const q="'"+folderId+"' in parents and trashed=false";
+  const r=await driveApi('drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id,name,mimeType,modifiedTime)&orderBy=modifiedTime');const j=await r.json();
+  return (j.files||[]).filter(f=>/\.(csv|ofx|qfx|txt)$/i.test(f.name||'')||/csv|ofx/i.test(f.mimeType||''));
+}
+function guessAccount(filename){
+  const f=recoNorm(filename);
+  const alias=[['itau',/itau/],['inter',/inter/],['brasil',/brasil|\bbb\b/]];
+  for(const[key,re]of alias){if(re.test(f)){const a=S.accounts.find(x=>re.test(recoNorm((x.bank||'')+' '+(x.name||''))));if(a)return a.id;}}
+  for(const a of S.accounts){const toks=recoTokens((a.bank||'')+' '+(a.name||'')).filter(t=>!['banco','conta','principal'].includes(t));if(toks.some(t=>f.includes(t.slice(0,4))))return a.id;}
+  return S.accounts[0]&&S.accounts[0].id;
+}
+async function syncDriveStatements(){
+  if(!driveState.token){toast('Conecte ao Google primeiro');navigateTo('settings');return;}
+  toast('Procurando extratos na pasta do Drive...');
+  try{
+    const fid=await driveFolderId();
+    const files=await driveListStatements(fid);
+    const done=S._importedFiles||{};
+    const fresh=files.filter(f=>!done[f.id]);
+    if(!fresh.length){toast(files.length?'Nenhum extrato novo na pasta':'Pasta "'+DRIVE_STMT_FOLDER+'" vazia — solte os CSV/OFX lá no Drive');return;}
+    const parsed=[];
+    for(const f of fresh){try{const r=await driveApi('drive/v3/files/'+f.id+'?alt=media');const txt=await r.text();parsed.push({file:f,items:parseAnyToItems(txt),account:guessAccount(f.name)});}catch(e){parsed.push({file:f,items:[],account:guessAccount(f.name),error:true});}}
+    openDriveImportModal(parsed);
+  }catch(e){toast('Erro ao ler a pasta do Drive');}
+}
+function driveImportSetAcc(idx,v){if(driveImportData[idx])driveImportData[idx].account=v;}
+function openDriveImportModal(parsed){
+  driveImportData=parsed;
+  const accOpts=sel=>S.accounts.map(a=>`<option value="${a.id}" ${a.id===sel?'selected':''}>${a.name}</option>`).join('');
+  const rows=parsed.map((p,idx)=>{
+    const nNew=p.items.filter(i=>!isDup({...i,account:p.account})).length;
+    const info=p.error?'<span style="color:var(--amber)">erro ao ler</span>':p.items.length?`${p.items.length} lançamentos · <b style="color:var(--green)">${nNew} novos</b>`:'<span style="color:var(--amber)">nada reconhecido (PDF não é lido aqui)</span>';
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line)">
+      <input type="checkbox" data-idx="${idx}" ${p.items.length&&!p.error?'checked':''} ${!p.items.length?'disabled':''} style="width:auto;flex-shrink:0">
+      <span style="flex:1;min-width:0"><b style="word-break:break-all">${p.file.name}</b><div class="mut" style="font-size:11px">${info}</div></span>
+      <select onchange="driveImportSetAcc(${idx},this.value)" style="width:auto;padding:5px 7px;font-size:12px;flex-shrink:0">${accOpts(p.account)}</select>
+    </div>`;}).join('');
+  mod.innerHTML=`<h2>Importar extratos do Drive</h2>
+    <p class="help" style="margin-bottom:10px">Arquivos na pasta <b>${DRIVE_STMT_FOLDER}</b>. Confira a <b>conta</b> de cada um e confirme. Lançamentos repetidos são ignorados, e cada arquivo só é importado uma vez.</p>
+    ${rows}
+    <div class="row sp" style="margin-top:16px"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn" onclick="applyDriveImport()"><span data-ic2="check"></span> Importar selecionados</button></div>`;
+  injectIcons(mod);mb.classList.add('open');
+}
+function applyDriveImport(){
+  let total=0,dups=0;
+  mod.querySelectorAll('input[type=checkbox][data-idx]').forEach(c=>{
+    if(!c.checked)return;const p=driveImportData[+c.dataset.idx];if(!p||!p.items.length)return;
+    p.items.forEach(it=>{const t={...it,category:autoCat(it.description,it.amount),owner:autoOwner(it.description),account:p.account};if(isDup(t)){dups++;return;}S.transactions.push({...t,id:uid()});total++;});
+    S._importedFiles=S._importedFiles||{};S._importedFiles[p.file.id]={name:p.file.name,when:new Date().toISOString()};
+  });
+  save();buildMonths();render();closeModal();toast(total+' importadas'+(dups?' · '+dups+' duplicadas ignoradas':''));
+}
 async function driveAfterAuth(){const f=await driveFind();if(f){driveState.fileId=f.id;await drivePull();}else{await drivePush(true);}}
 async function drivePush(create){
   if(!driveState.token)return toast('Conecte ao Google primeiro');
