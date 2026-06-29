@@ -475,7 +475,11 @@
         <div class="field"><label>Client ID do Google (OAuth)</label><input id="drv_cid" placeholder="000000.apps.googleusercontent.com"></div>
         <div class="row" style="margin-bottom:10px"><button class="btn" onclick="driveConnect()"><span data-ic="save"></span> Conectar Google</button><button class="btn ghost" onclick="drivePush(false)">Enviar agora</button><button class="btn ghost" onclick="drivePull()">Baixar agora</button></div>
         <div class="field"><label style="font-weight:500;color:var(--txt);display:flex;align-items:center;gap:8px"><input type="checkbox" id="drv_auto" onchange="toggleDriveAuto(this.checked)" style="width:auto">Sincronizar automaticamente ao alterar</label></div>
-        <div class="row"><input id="drv_email" placeholder="email da Keli (Google)" style="flex:1"><button class="btn sm" onclick="driveShare(document.getElementById('drv_email').value)">Compartilhar</button></div>
+        <div class="row" style="margin-bottom:10px"><input id="drv_email" placeholder="email da Keli (Google)" style="flex:1"><button class="btn sm" onclick="driveShare(document.getElementById('drv_email').value)">Compartilhar</button></div>
+        <div class="field" style="margin-bottom:0"><label>Pasta de extratos (cole o link do Drive)</label>
+          <div class="row"><input id="drv_folder" placeholder="https://drive.google.com/drive/folders/..." style="flex:1"><button class="btn sm" onclick="saveStmtFolder(document.getElementById('drv_folder').value)">Salvar pasta</button></div>
+          <div class="help" id="drv_folder_st">Onde você solta os CSV/OFX. Se deixar vazio, o app usa/cria uma pasta chamada "Extratos Dashboard".</div>
+        </div>
       </div>
       <div class="card" style="margin-top:16px">
         <h3><span class="ht"><span data-ic="alert"></span> Dados</span></h3>
@@ -1132,6 +1136,7 @@ function renderSettings(){
   document.getElementById('rulesList').innerHTML=S.rules.map((r,i)=>`<div class="row sp" style="padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">"<b>${r.match}</b>" → <span class="tag">${r.cat}</span><button class="ibtn dng" onclick="delRule(${i})">${ic('trash',14)}</button></div>`).join('')||'<div class="mut">Nenhuma regra.</div>';
   document.getElementById('catManage').innerHTML=S.categories.map((c,i)=>`<div style="padding:11px 0;border-bottom:1px solid var(--line)"><div class="row sp"><span style="display:flex;align-items:center;gap:10px;font-weight:600"><span class="cicon" style="width:30px;height:30px;background:${c.color}22;color:${c.color}">${ic(c.icon,16)}</span>${c.name} ${c.kind==='in'?'<span class="tag">receita</span>':''}</span><span class="mut" style="font-size:12px">${(c.subs||[]).length} subcategorias</span></div><div style="font-size:12px;color:var(--mut2);margin-top:6px;padding-left:40px">${(c.subs||[]).join(' · ')||'—'}</div></div>`).join('');
   const dc=driveCfg();const cidEl=document.getElementById('drv_cid');if(cidEl&&!cidEl.value)cidEl.value=dc.clientId||DRIVE_CLIENT_ID;const auEl=document.getElementById('drv_auto');if(auEl)auEl.checked=!!dc.auto;driveState.auto=!!dc.auto;
+  const fEl=document.getElementById('drv_folder');if(fEl&&!fEl.value&&dc.stmtFolder)fEl.value=dc.stmtFolder;const fSt=document.getElementById('drv_folder_st');if(fSt&&dc.stmtFolder)fSt.textContent='Pasta definida ✓ (os extratos serão lidos dela)';
 }
 function addRule(){const m=document.getElementById('ruleMatch').value.trim();const c=document.getElementById('ruleCat').value;if(!m)return;S.rules.push({match:m,cat:c});document.getElementById('ruleMatch').value='';save();renderSettings();toast('Regra adicionada');}
 function delRule(i){S.rules.splice(i,1);save();renderSettings();}
@@ -1503,7 +1508,11 @@ async function driveFind(){const r=await driveApi('drive/v3/files?q='+encodeURIC
 /* ===== IMPORTAR EXTRATOS DE UMA PASTA DO DRIVE ===== */
 const DRIVE_STMT_FOLDER='Extratos Dashboard';
 let driveImportData=[];
+function parseFolderId(link){link=(link||'').trim();if(!link)return '';const m=link.match(/[-\w]{25,}/);return m?m[0]:link;}
+function saveStmtFolder(link){const id=parseFolderId(link);setDriveCfg(Object.assign(driveCfg(),{stmtFolder:id}));const st=document.getElementById('drv_folder_st');if(st)st.textContent=id?'Pasta definida ✓ (os extratos serão lidos dela)':'Pasta limpa — o app usará "Extratos Dashboard".';toast(id?'Pasta de extratos salva':'Pasta limpa');}
 async function driveFolderId(){
+  const cfgId=driveCfg().stmtFolder;
+  if(cfgId){try{await driveApi('drive/v3/files/'+cfgId+'?fields=id');return cfgId;}catch(e){toast('Pasta configurada não acessível — usando "Extratos Dashboard"');}}
   const q="name='"+DRIVE_STMT_FOLDER+"' and mimeType='application/vnd.google-apps.folder' and trashed=false";
   const r=await driveApi('drive/v3/files?q='+encodeURIComponent(q)+'&fields=files(id)&spaces=drive');const j=await r.json();
   if(j.files&&j.files[0])return j.files[0].id;
