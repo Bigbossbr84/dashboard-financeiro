@@ -580,15 +580,14 @@ const DEF_CATS=[
 ];
 function ensureExtraCats(d){if(d.categories&&!d.categories.some(c=>c.name==='Kuralima')){d.categories.splice(Math.max(0,d.categories.length-1),0,{name:'Kuralima',icon:'bank',color:'#f97316',subs:['Contabilidade','Impostos PJ','Tarifas bancárias PJ','Fornecedores','Pró-labore','Funcionários','Outros PJ']});}return d;}
 const DEF_RULES=[
-  {match:'salario',cat:'Salário'},{match:'salário',cat:'Salário'},{match:'pagamento',cat:'Salário'},
+  {match:'salario',cat:'Salário'},{match:'salário',cat:'Salário'},
   {match:'ifood',cat:'Alimentação'},{match:'rappi',cat:'Alimentação'},{match:'restaurante',cat:'Alimentação'},{match:'padaria',cat:'Alimentação'},{match:'grill',cat:'Alimentação'},
   {match:'uber',cat:'Transporte'},{match:'99',cat:'Transporte'},{match:'posto',cat:'Transporte'},{match:'ipiranga',cat:'Transporte'},{match:'shell',cat:'Transporte'},
   {match:'mercado',cat:'Alimentação'},{match:'supermerc',cat:'Alimentação'},{match:'pao de acucar',cat:'Alimentação'},{match:'feira',cat:'Alimentação'},
   {match:'netflix',cat:'Comunicação'},{match:'spotify',cat:'Comunicação'},{match:'amazonprime',cat:'Comunicação'},{match:'amazon prime',cat:'Comunicação'},{match:'vivo',cat:'Comunicação'},{match:'claro',cat:'Comunicação'},{match:'tim',cat:'Comunicação'},
   {match:'aluguel',cat:'Casa'},{match:'condominio',cat:'Casa'},{match:'energia',cat:'Casa'},{match:'enel',cat:'Casa'},{match:'cpfl',cat:'Casa'},{match:'sabesp',cat:'Casa'},{match:'agua',cat:'Casa'},
   {match:'farmacia',cat:'Saúde'},{match:'drogaria',cat:'Saúde'},{match:'drogasil',cat:'Saúde'},{match:'smart fit',cat:'Lazer'},{match:'smartfit',cat:'Lazer'},
-  {match:'iptu',cat:'Tarifas e impostos'},{match:'ipva',cat:'Tarifas e impostos'},{match:'tarifa',cat:'Tarifas e impostos'},{match:'iof',cat:'Tarifas e impostos'},
-  {match:'pix',cat:'Outros'},{match:'ted',cat:'Outros'},{match:'transferencia',cat:'Outros'},{match:'saque',cat:'Outros'}
+  {match:'iptu',cat:'Tarifas e impostos'},{match:'ipva',cat:'Tarifas e impostos'},{match:'tarifa',cat:'Tarifas e impostos'},{match:'iof',cat:'Tarifas e impostos'}
 ];
 /* regras embutidas para extratos (Itaú etc.) — sempre ativas, suas regras têm prioridade */
 const BASE_RULES=[
@@ -599,7 +598,8 @@ const BASE_RULES=[
   {match:'escola',cat:'Educação'},{match:'nova dimensao',cat:'Educação'},{match:'colegio',cat:'Educação'},
   {match:'simples naciona',cat:'Tarifas e impostos'},{match:'darf',cat:'Tarifas e impostos'},{match:'dare',cat:'Tarifas e impostos'},{match:'sefaz',cat:'Tarifas e impostos'},{match:'imposto',cat:'Tarifas e impostos'},{match:'iptu',cat:'Tarifas e impostos'},{match:'ipva',cat:'Tarifas e impostos'},{match:'tarifa',cat:'Tarifas e impostos'},{match:'iof',cat:'Tarifas e impostos'},{match:'contabiliza',cat:'Kuralima'},{match:'contabilidade',cat:'Kuralima'},
   {match:'fatura paga',cat:'Despesas Pessoais'},{match:'cartao luiza',cat:'Despesas Pessoais'},{match:'uniclas',cat:'Despesas Pessoais'},{match:'vuoncard',cat:'Despesas Pessoais'},{match:'cartao cass',cat:'Casa'},{match:'cassol',cat:'Casa'},{match:'renner',cat:'Despesas Pessoais'},{match:'c&a',cat:'Despesas Pessoais'},{match:'cartao',cat:'Despesas Pessoais'},
-  {match:'realize credito',cat:'Outros'},{match:'investcred',cat:'Outros'},{match:'vero s',cat:'Outros'},
+  {match:'realize credito',cat:'Despesas Pessoais'},{match:'investcred',cat:'Despesas Pessoais'},{match:'banco csf',cat:'Despesas Pessoais'},{match:'vero s',cat:'Outros'},
+  {match:'clinipam',cat:'Saúde'},{match:'reabilita',cat:'Saúde'},{match:'projeto aba',cat:'Saúde'},{match:'clinica',cat:'Saúde'},{match:'psicolog',cat:'Saúde'},{match:'odonto',cat:'Saúde'},
   {match:'posto',cat:'Transporte'},{match:'combustivel',cat:'Transporte'},{match:'webmotors',cat:'Transporte'},{match:'99 tecnolog',cat:'Transporte'},{match:'uber',cat:'Transporte'},
   {match:'carrefour',cat:'Alimentação'},{match:'costco',cat:'Alimentação'},{match:'mercado',cat:'Alimentação'},{match:'ifood',cat:'Alimentação'},{match:'padaria',cat:'Alimentação'},{match:'restaurante',cat:'Alimentação'},{match:'chopp',cat:'Alimentação'},
   {match:'unimed',cat:'Saúde'},{match:'farmacia',cat:'Saúde'},{match:'drogaria',cat:'Saúde'},{match:'neuropsi',cat:'Saúde'},{match:'terapia',cat:'Saúde'},{match:'dra ',cat:'Saúde'},
@@ -619,6 +619,8 @@ function load(){
     if(!d.categories||typeof d.categories[0]==='string')d.categories=clone(DEF_CATS);
     ensureExtraCats(d);
     d.budgets=d.budgets||{};d.rules=d.rules||clone(DEF_RULES);d.cards=d.cards||[];d.bills=d.bills||[];
+    /* cura regras genéricas antigas que jogavam tudo em Outros/Salário e bloqueavam o auto-classificar */
+    d.rules=d.rules.filter(r=>['pix','ted','transferencia','saque','pagamento'].indexOf((r.match||'').toLowerCase())<0);
     if(typeof d.income!=='number')d.income=0;
     const nowM=new Date().toISOString().slice(0,7);
     d.bills.forEach(b=>{b.payments=b.payments||{};if(b.status==='pago'&&!Object.keys(b.payments).length)b.payments[nowM]=true;delete b.status;if(!b.recurring&&!b.month)b.month=nowM;});
