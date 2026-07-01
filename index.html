@@ -436,9 +436,9 @@
           <div id="impDriveStatus" class="help" style="margin:0 0 12px;min-height:18px"></div>
           <div class="help" style="margin:0 0 14px">Solte os arquivos <b>CSV/OFX</b> na pasta do Drive e toque acima. Ou importe um arquivo do aparelho abaixo.</div>
           <div class="field"><label>Conta de destino</label><select id="impAcc"></select></div>
-          <div class="field"><label>Arquivo (CSV, OFX, TXT)</label>
-            <input type="file" id="impFile" accept=".csv,.ofx,.txt,.qfx" onchange="handleFile(event)">
-            <div class="help">Formato BR detectado automaticamente (dd/mm/aaaa, vírgula decimal).</div>
+          <div class="field"><label>Arquivo do extrato (PDF, CSV, OFX, TXT)</label>
+            <input type="file" id="impFile" accept=".pdf,.csv,.ofx,.txt,.qfx" onchange="handleFile(event)">
+            <div class="help">Suba o <b>PDF do extrato</b> (Itaú, etc.) direto — sem precisar copiar/colar. Também aceita CSV/OFX. Escolha a <b>Conta de destino</b> acima antes de subir.</div>
           </div>
           <div class="field"><label>Ou cole o texto do extrato (PDF → copiar/colar)</label>
             <textarea id="impPaste" placeholder="15/06/2026  Mercado Pão de Açúcar  -250,00&#10;20/06/2026  Salário  5.000,00"></textarea>
@@ -1459,7 +1459,20 @@ function delBill(id){if(!confirm('Excluir conta?'))return;S.bills=S.bills.filter
 let pending=[],impOpening=null,impSaldoConta=null;
 function buildImpAcc(){document.getElementById('impAcc').innerHTML=S.accounts.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');}
 function detectOpening(txt){impOpening=null;const sa=(txt||'').split(/\r?\n/).find(l=>/saldo anterior/i.test(l));if(sa){const mm=sa.match(/-?\d{1,3}(?:[.\s]\d{3})*[,.]\d{2}/);if(mm)impOpening=parseNum(mm[0]);}}
-function handleFile(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const t=r.result;if(/<OFX>|<STMTTRN>/i.test(t))parseOFX(t);else parseCSV(t);};r.readAsText(f,'utf-8');}
+async function handleFile(e){const f=e.target.files[0];if(!f)return;
+  const isPdf=/\.pdf$/i.test(f.name)||f.type==='application/pdf';
+  if(isPdf){
+    toast('Lendo o PDF... (pode levar alguns segundos)');
+    try{
+      const txt=await extractPdfText(f);
+      if(!txt.trim()){toast('Não consegui ler texto do PDF (pode ser um PDF de imagem/foto).');e.target.value='';return;}
+      analyzeText(txt);
+      const n=(pending||[]).length;
+      toast(n?n+' lançamentos lidos do PDF — confira e confirme':'Não reconheci lançamentos no PDF — tente copiar/colar o texto');
+    }catch(err){toast('Não foi possível ler o PDF: '+(err&&err.message||err));}
+    e.target.value='';return;
+  }
+  const r=new FileReader();r.onload=()=>{const t=r.result;if(/<OFX>|<STMTTRN>/i.test(t))parseOFX(t);else parseCSV(t);};r.readAsText(f,'utf-8');}
 function ofxToItems(txt){const blocks=txt.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)||[];return blocks.map(b=>{const g=t=>{const m=b.match(new RegExp('<'+t+'>([^<\\r\\n]+)','i'));return m?m[1].trim():'';};const date=parseDate(g('DTPOSTED'));const amt=parseNum(g('TRNAMT'));const desc=g('MEMO')||g('NAME')||g('TRNTYPE');return date?{date,description:desc,amount:amt}:null;}).filter(Boolean);}
 function csvToItems(txt){const lines=txt.split(/\r?\n/).filter(l=>l.trim());const delim=(txt.match(/;/g)||[]).length>(txt.match(/,/g)||[]).length?';':',';const items=[];
   lines.forEach(line=>{if(/saldo/i.test(line))return;const cells=splitCsv(line,delim);let date=null,amt=null,desc=[];
